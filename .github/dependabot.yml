@@ -6,6 +6,3 @@ updates:
     interval: daily
     time: "14:00"
   target-branch: "dev"
-  labels:
-    - "deps"
-    - "depbot"

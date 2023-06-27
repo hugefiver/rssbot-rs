@@ -13,9 +13,19 @@ jobs:
     - uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ matrix.rust }}
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
+
+#     - uses: actions-rs/toolchain@v1
+#       with:
+#           toolchain: nightly
+#           override: true
+#           components: clippy
+      
+    - name: Clippy
+      run: cargo clippy --no-deps --all-targets
+      
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test -v
 
   test-locales:
     strategy:
@@ -24,9 +34,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: hecrj/setup-rust-action@v1
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: nightly
+          toolchain: nightly
+          override: true
     - uses: actions/checkout@master
     - name: Check locales
       env:

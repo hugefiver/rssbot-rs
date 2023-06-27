@@ -3,5 +3,10 @@ updates:
 - package-ecosystem: cargo
   directory: "/"
   schedule:
-    interval: weekly
-  open-pull-requests-limit: 10
+    interval: daily
+    open-pull-requests-limit: 0
+    time: "14:00"
+  target-branch: "dev"
+  labels:
+    - "deps"
+    - "depbot"

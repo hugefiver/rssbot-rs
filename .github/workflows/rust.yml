@@ -10,20 +10,20 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: hecrj/setup-rust-action@v1
-      with:
-        rust-version: ${{ matrix.rust }}
+#     - uses: hecrj/setup-rust-action@v1
+#       with:
+#         rust-version: ${{ matrix.rust }}
     - uses: actions/checkout@v3
 
-#     - uses: actions-rs/toolchain@v1
-#       with:
-#           toolchain: nightly
-#           override: true
-#           components: clippy
-      
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          override: true
+          components: clippy
+
     - name: Clippy
       run: cargo clippy --no-deps --all-targets
-      
+
     - name: Run tests
       run: cargo test -v
 

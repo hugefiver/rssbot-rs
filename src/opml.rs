@@ -10,36 +10,36 @@ use crate::data::Feed;
 
 pub fn into_opml(feeds: Vec<Feed>) -> String {
     let mut writer = Writer::new(Cursor::new(Vec::new()));
-    let decl = BytesDecl::new(b"1.0", Some(b"UTF-8"), None);
+    let decl = BytesDecl::new("1.0", Some("UTF-8"), None);
     writer.write_event(Event::Decl(decl)).unwrap();
 
     with_tag(
         &mut writer,
-        b"opml",
+        "opml",
         &mut [Attribute::from(("version", "2.0")).into()],
         |writer| {
-            with_tag(writer, b"head", &mut [], |writer| {
-                with_tag(writer, b"title", &mut [], |writer| {
-                    let text = BytesText::from_plain(b"Exported from RSSBot");
+            with_tag(writer, "head", &mut [], |writer| {
+                with_tag(writer, "title", &mut [], |writer| {
+                    let text = BytesText::new("Exported from RSSBot");
                     writer.write_event(Event::Text(text))?;
                     Ok(())
                 })?;
-                with_tag(writer, b"dateCreated", &mut [], |writer| {
+                with_tag(writer, "dateCreated", &mut [], |writer| {
                     // e.g. Thu, 02 Nov 2017 18:08:24 CST
                     let time = Local::now().format("%a, %d %b %Y %T %Z").to_string();
-                    let text = BytesText::from_plain_str(&time);
+                    let text = BytesText::new(&time);
                     writer.write_event(Event::Text(text))?;
                     Ok(())
                 })?;
-                with_tag(writer, b"docs", &mut [], |writer| {
-                    let text = BytesText::from_plain(b"http://www.opml.org/spec2");
+                with_tag(writer, "docs", &mut [], |writer| {
+                    let text = BytesText::new("http://www.opml.org/spec2");
                     writer.write_event(Event::Text(text))?;
                     Ok(())
                 })
             })?;
-            with_tag(writer, b"body", &mut [], move |writer| {
+            with_tag(writer, "body", &mut [], move |writer| {
                 for feed in feeds {
-                    let mut outline = BytesStart::borrowed(b"outline", 7);
+                    let mut outline = BytesStart::new("outline");
                     outline.push_attribute(Attribute::from(("type", "rss")));
                     outline.push_attribute(Attribute::from(("text", feed.title.as_str())));
                     outline.push_attribute(Attribute::from(("xmlUrl", feed.link.as_str())));
@@ -57,7 +57,7 @@ pub fn into_opml(feeds: Vec<Feed>) -> String {
 // type of `attrs` is for zero allocation
 fn with_tag<'a, W, F>(
     writer: &mut Writer<W>,
-    tag: &[u8],
+    tag: &str,
     attrs: &mut [Option<Attribute<'a>>],
     then: F,
 ) -> quick_xml::Result<()>
@@ -65,13 +65,13 @@ where
     W: Write,
     F: FnOnce(&mut Writer<W>) -> quick_xml::Result<()>,
 {
-    let mut start = BytesStart::borrowed(tag, tag.len());
+    let mut start = BytesStart::new(tag);
     for attr in attrs.iter_mut() {
         start.push_attribute(attr.take().unwrap());
     }
     writer.write_event(Event::Start(start)).unwrap();
     then(writer)?;
-    let end = BytesEnd::borrowed(tag);
+    let end = BytesEnd::new(tag);
     writer.write_event(Event::End(end)).unwrap();
     Ok(())
 }

@@ -132,7 +132,8 @@ impl FromXml for Option<String> {
                     SkipThisElement::from_xml(bufs, reader, e)?;
                 }
                 Ok(XmlEvent::Text(ref e)) => {
-                    let text = reader.decoder().decode(e.unescape()?.as_bytes())?.into_owned();
+                    let raw = reader.decoder().decode(e.as_ref())?;
+                    let text = quick_xml::escape::unescape(&raw)?.into_owned();
                     content = Some(text);
                 }
                 Ok(XmlEvent::CData(ref e)) => {
@@ -367,15 +368,9 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
     reader.trim_text(true);
     let bufs = BufPool::new(4, 512);
     let mut buf = bufs.pop();
-    let mut encoding = reader.decoder().encoding();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(XmlEvent::Decl(e)) => {
-                if let Some(enc) = e.encoder() {
-                    encoding = enc;
-                }
-            }
-            Ok(XmlEvent::Start(ref e)) => match quick_xml::encoding::decode(e.name().as_ref(), encoding)?.as_ref() {
+            Ok(XmlEvent::Start(ref e)) => match reader.decoder().decode(e.name().as_ref())?.as_ref() {
                 "rss" => continue,
                 "channel" | "feed" | "rdf:RDF" => {
                     return Rss::from_xml(&bufs, &mut reader, e);

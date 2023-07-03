@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json;
+
 use thiserror::Error;
 
 use crate::feed;
@@ -94,11 +94,11 @@ impl Database {
     }
 
     pub fn all_feeds(&self) -> Vec<Feed> {
-        self.feeds.iter().map(|(_, v)| v.clone()).collect()
+        self.feeds.values().cloned().collect()
     }
 
     pub fn all_subscribers(&self) -> Vec<SubscriberId> {
-        self.subscribers.iter().map(|(k, _)| *k).collect()
+        self.subscribers.keys().copied().collect()
     }
 
     pub fn subscribed_feeds(&self, subscriber: SubscriberId) -> Option<Vec<Feed>> {
@@ -218,7 +218,7 @@ impl Database {
             .remove(&from)
             .map(|feeds| {
                 for feed_id in &feeds {
-                    let feed = self.feeds.get_mut(&feed_id).unwrap();
+                    let feed = self.feeds.get_mut(feed_id).unwrap();
                     feed.subscribers.remove(&from);
                     feed.subscribers.insert(to);
                 }
@@ -273,7 +273,7 @@ impl Database {
     }
 
     pub fn save(&self) -> Result<(), DataError> {
-        let feeds_list: Vec<&Feed> = self.feeds.iter().map(|(_id, feed)| feed).collect();
+        let feeds_list: Vec<&Feed> = self.feeds.values().collect();
         let file = AtomicFile::new(&self.path, OverwriteBehavior::AllowOverwrite);
         file.write(|file| serde_json::to_writer(file, &feeds_list))
             .map_err(|e| match e {
@@ -294,8 +294,8 @@ pub enum FeedUpdate {
 
 fn gen_item_hash(item: &feed::Item) -> u64 {
     item.id.as_ref().map(|id| gen_hash(&id)).unwrap_or_else(|| {
-        let title = item.title.as_ref().map(|s| s.as_str()).unwrap_or_default();
-        let link = item.link.as_ref().map(|s| s.as_str()).unwrap_or_default();
+        let title = item.title.as_deref().unwrap_or_default();
+        let link = item.link.as_deref().unwrap_or_default();
         gen_hash(&format!("{}{}", title, link))
     })
 }

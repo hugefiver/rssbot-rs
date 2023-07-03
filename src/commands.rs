@@ -45,7 +45,7 @@ pub async fn check_command(opt: &crate::Opt, cmd: &Command) -> bool {
     let reply_target = &mut MsgTarget::new(cmd.chat.id, cmd.message_id);
 
     // Private mode
-    if !opt.admin.is_empty() && !is_from_bot_admin(&cmd, &opt.admin) {
+    if !opt.admin.is_empty() && !is_from_bot_admin(cmd, &opt.admin) {
         eprintln!(
             "Unauthenticated request from user/channel: {:?}, command: {}, args: {}",
             cmd.from, cmd.command, cmd.text.value
@@ -62,7 +62,7 @@ pub async fn check_command(opt: &crate::Opt, cmd: &Command) -> bool {
         }
         // Restrict mode: bot commands are only accessible to admins.
         Group { .. } | Supergroup { .. } if opt.restricted => {
-            let user_is_admin = is_from_chat_admin(&cmd).await;
+            let user_is_admin = is_from_chat_admin(cmd).await;
             if !user_is_admin {
                 let _ignore_result = update_response(
                     &cmd.bot,
@@ -226,8 +226,7 @@ async fn check_channel_permission(
     }
     let bot_is_admin = admins
         .iter()
-        .find(|member| member.user.id == *crate::BOT_ID.get().unwrap())
-        .is_some();
+        .any(|member| member.user.id == *crate::BOT_ID.get().unwrap());
     if !bot_is_admin {
         update_response(
             bot,

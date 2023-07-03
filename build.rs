@@ -1,8 +1,6 @@
 use std::env;
 use std::path::Path;
 
-use ctl10n;
-
 const LOCALES: &[&str] = &["zh", "en"];
 
 fn main() {

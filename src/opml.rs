@@ -55,10 +55,10 @@ pub fn into_opml(feeds: Vec<Feed>) -> String {
 }
 
 // type of `attrs` is for zero allocation
-fn with_tag<'a, W, F>(
+fn with_tag<W, F>(
     writer: &mut Writer<W>,
     tag: &str,
-    attrs: &mut [Option<Attribute<'a>>],
+    attrs: &mut [Option<Attribute<'_>>],
     then: F,
 ) -> quick_xml::Result<()>
 where

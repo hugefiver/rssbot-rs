@@ -13,7 +13,7 @@ use anyhow::Context;
 use hyper_proxy::{Intercept, Proxy};
 use once_cell::sync::OnceCell;
 use structopt::StructOpt;
-use tbot;
+
 use tokio::{self, sync::Mutex};
 
 // Include the tr! macro and localizations

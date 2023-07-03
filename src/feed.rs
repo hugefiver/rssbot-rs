@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::mem;
+
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::str;
@@ -82,7 +82,7 @@ impl FromXml for SkipThisElement {
                 Ok(XmlEvent::End(_)) if depth == 1 => break,
                 Ok(XmlEvent::End(_)) => depth -= 1,
                 Ok(XmlEvent::Eof) => break, // just ignore EOF
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 _ => (),
             }
             buf.clear();
@@ -109,7 +109,7 @@ impl FromXml for Option<u32> {
                     output = text.parse().ok();
                 }
                 Ok(XmlEvent::End(_)) | Ok(XmlEvent::Eof) => break,
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 _ => (),
             }
             buf.clear();
@@ -141,7 +141,7 @@ impl FromXml for Option<String> {
                     content = Some(text);
                 }
                 Ok(XmlEvent::End(_)) | Ok(XmlEvent::Eof) => break,
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 _ => (),
             }
             buf.clear();
@@ -236,7 +236,7 @@ impl FromXml for Rss {
                     reading_rss_1_0_head = false;
                 }
                 Ok(XmlEvent::End(_)) | Ok(XmlEvent::Eof) => break,
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 _ => (),
             }
             buf.clear();
@@ -310,7 +310,7 @@ impl FromXml for Item {
                     }
                 }
                 Ok(XmlEvent::End(_)) | Ok(XmlEvent::Eof) => break,
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 _ => (),
             }
             buf.clear();
@@ -353,7 +353,7 @@ impl FromXml for Option<SyPeriod> {
                     output = Some(period);
                 }
                 Ok(XmlEvent::End(_)) | Ok(XmlEvent::Eof) => break,
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 _ => (),
             }
             buf.clear();
@@ -370,17 +370,19 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
     let mut buf = bufs.pop();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(XmlEvent::Start(ref e)) => match reader.decoder().decode(e.name().as_ref())?.as_ref() {
-                "rss" => continue,
-                "channel" | "feed" | "rdf:RDF" => {
-                    return Rss::from_xml(&bufs, &mut reader, e);
+            Ok(XmlEvent::Start(ref e)) => {
+                match reader.decoder().decode(e.name().as_ref())?.as_ref() {
+                    "rss" => continue,
+                    "channel" | "feed" | "rdf:RDF" => {
+                        return Rss::from_xml(&bufs, &mut reader, e);
+                    }
+                    _ => {
+                        SkipThisElement::from_xml(&bufs, &mut reader, e)?;
+                    }
                 }
-                _ => {
-                    SkipThisElement::from_xml(&bufs, &mut reader, e)?;
-                }
-            },
+            }
             Ok(XmlEvent::Eof) => return Err(quick_xml::Error::UnexpectedEof("feed".to_string())),
-            Err(err) => return Err(err.into()),
+            Err(err) => return Err(err),
             _ => (),
         }
         buf.clear();
@@ -455,9 +457,7 @@ struct Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        self.pool
-            .borrow_mut()
-            .push(mem::replace(&mut self.inner, Vec::new()))
+        self.pool.borrow_mut().push(std::mem::take(&mut self.inner))
     }
 }
 

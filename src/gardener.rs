@@ -11,7 +11,7 @@ use crate::data::Database;
 use crate::BOT_ID;
 
 pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) {
-    let mut interval = time::interval(Duration::from_secs(1 * 24 * 60 * 60));
+    let mut interval = time::interval(Duration::from_secs(24 * 60 * 60));
     tokio::spawn(async move {
         loop {
             interval.tick().await;

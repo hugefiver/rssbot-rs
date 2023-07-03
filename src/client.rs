@@ -28,10 +28,9 @@ impl FeedError {
         match self {
             Self::Network(source) => tr!("network_error", source = source),
             Self::Parsing(source) => tr!("parsing_error", source = source),
-            Self::TooLarge(limit) => tr!(
-                "rss_size_limit_exceeded",
-                size = format_byte_size((*limit).into())
-            ),
+            Self::TooLarge(limit) => {
+                tr!("rss_size_limit_exceeded", size = format_byte_size(*limit))
+            }
         }
     }
 }

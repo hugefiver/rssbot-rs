@@ -42,7 +42,7 @@ chrono = "0.4"
 pinyin = "0.10"
 either = "1.8"
 atomicwrites = "0.4"
-clap = { version = "4.3.11", features = ["derive"] }
+clap = { version = "4.3.16", features = ["derive"] }
 
 [dependencies.tbot]
 version = "0.6"

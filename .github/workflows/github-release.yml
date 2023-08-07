@@ -12,9 +12,7 @@ jobs:
       upload_url: ${{ steps.create-release.outputs.upload_url }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 100
+      uses: actions/checkout@v3
     - name: Fetch all tags
       run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
     - name: Generate Changelog
@@ -25,7 +23,7 @@ jobs:
         log="${log//'%'/'%25'}"
         log="${log//$'\n'/'%0A'}"
         log="${log//$'\r'/'%0D'}"
-        echo "::set-output name=value::$log"
+        echo "value=$log" >> "$GITHUB_OUTPUT"
     - name: Create Release
       id: create-release
       uses: actions/create-release@v1

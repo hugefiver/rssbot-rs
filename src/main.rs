@@ -4,6 +4,7 @@
 use std::backtrace::Backtrace;
 use std::convert::TryInto;
 use std::env;
+use std::num::NonZeroUsize;
 use std::panic;
 use std::path::PathBuf;
 use std::process;
@@ -14,6 +15,7 @@ use clap::Parser;
 use hyper_proxy::{Intercept, Proxy};
 use once_cell::sync::OnceCell;
 
+use tbot::types::parameters::AllowedUpdates;
 use tokio::{self, sync::Mutex};
 
 // Include the tr! macro and localizations
@@ -132,7 +134,49 @@ async fn main() -> anyhow::Result<()> {
     event_loop.username(me.user.username.unwrap());
     commands::register_commands(&mut event_loop, opt, db);
 
-    event_loop.polling().start().await.unwrap();
+    event_loop
+        .polling()
+        .last_n_updates(NonZeroUsize::new(200).unwrap())
+        // .limit(200)
+        .allowed_updates(AllowedUpdates::none().message(true))
+        .error_handler(|e| async {
+            use tbot::errors::Polling::*;
+            use tbot::errors::MethodCall;
+            match e {
+                Fetching(method_call) => match method_call {
+                    MethodCall::Network(e) => {
+                        eprintln!("[tbot polling] Network error: {}", e);
+                    }
+                    MethodCall::OutOfService => {
+                        eprintln!("[tbot polling] Telegram is out of service");
+                    }
+                    MethodCall::Parse { error, response } => {
+                        eprintln!("[tbot polling] Parse error: {}", error);
+                        match String::from_utf8_lossy(&response[..]) {
+                            s if s.is_empty() => {},
+                            s => eprintln!("[tbot polling] Response: {}", s),
+                        }
+                    }
+                    MethodCall::RequestError {
+                        description,
+                        error_code,
+                        migrate_to_chat_id,
+                        retry_after,
+                    } => {
+                        eprintln!(
+                            "[tbot polling] Request error: {} (code: {}), migrate_to_chat_id: {:?}, retry_after: {:?}",
+                            description, error_code, migrate_to_chat_id, retry_after
+                        );
+                    }
+                }
+                Timeout(_) => {
+                    eprintln!("[tbot polling] Timeout");
+                }
+            }
+        })
+        .start()
+        .await
+        .unwrap();
     Ok(())
 }
 

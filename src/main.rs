@@ -1,4 +1,4 @@
-#![feature(error_generic_member_access, provide_any)]
+#![feature(error_generic_member_access)]
 #![recursion_limit = "256"]
 
 use std::backtrace::Backtrace;
@@ -204,9 +204,8 @@ fn init_proxy() -> Option<Proxy> {
 
 fn print_error<E: std::error::Error>(err: E) {
     eprintln!("Error: {}", err);
-
     let mut err: &dyn std::error::Error = &err;
-    let mut deepest_backtrace = err.request_ref::<Backtrace>();
+    let mut deepest_backtrace = std::error::request_ref::<Backtrace>(err);
     if let Some(e) = err.source() {
         eprintln!("\nCaused by:");
         let multiple = e.source().is_some();
@@ -218,7 +217,8 @@ fn print_error<E: std::error::Error>(err: E) {
                 eprint!("    ")
             };
             eprintln!("{}", e);
-            if let Some(backtrace) = e.request_ref::<Backtrace>() {
+
+            if let Some(backtrace) = std::error::request_ref::<Backtrace>(e) {
                 deepest_backtrace = Some(backtrace);
             }
             err = e;

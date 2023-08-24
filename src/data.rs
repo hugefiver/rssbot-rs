@@ -147,7 +147,7 @@ impl Database {
             let subscribed_feeds = self
                 .subscribers
                 .entry(subscriber)
-                .or_insert_with(HashSet::default);
+                .or_default();
             if !subscribed_feeds.insert(feed_id) {
                 return false;
             }

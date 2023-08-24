@@ -30,7 +30,7 @@ enum AtomLink<'a> {
 }
 
 fn parse_atom_link<'a, B: std::io::BufRead>(
-    reader: &mut XmlReader<B>,
+    reader: &XmlReader<B>,
     attributes: Attributes<'a>,
 ) -> quick_xml::Result<Option<AtomLink<'a>>> {
     let mut href = None;
@@ -738,7 +738,7 @@ mod test {
 
     #[test]
     fn atom_link_parsing() {
-        let data = vec![
+        let data = [
             r#"<link href="alternate href" />"#,
             r#"<link href="alternate href" rel="alternate" />"#,
             r#"<link href="self href" rel="self" />"#,
@@ -761,7 +761,7 @@ mod test {
             let mut reader = XmlReader::from_reader(Cursor::new(data));
             let mut buf = Vec::new();
             if let XmlEvent::Empty(e) = reader.read_event_into(&mut buf).unwrap() {
-                let r = parse_atom_link(&mut reader, e.attributes()).unwrap();
+                let r = parse_atom_link(&reader, e.attributes()).unwrap();
                 assert_eq!(r, result);
             }
         }

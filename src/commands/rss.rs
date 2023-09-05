@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use either::Either;
 use pinyin::{Pinyin, ToPinyin};
-use tbot::{contexts::Command, types::parameters};
+use teloxide::requests::Requester;
+use teloxide::types::Message;
+use teloxide::utils::command::parse_command;
+use teloxide::Bot;
 use tokio::sync::Mutex;
 
 use crate::data::Database;
@@ -10,17 +14,19 @@ use crate::messages::{format_large_msg, Escape};
 
 use super::{check_channel_permission, update_response, MsgTarget};
 
-pub async fn rss(
-    db: Arc<Mutex<Database>>,
-    cmd: Arc<Command>,
-) -> Result<(), tbot::errors::MethodCall> {
-    let chat_id = cmd.chat.id;
-    let channel = &cmd.text.value;
+pub async fn rss(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
+    let chat_id = msg.chat.id;
+    let (_, args) = parse_command(
+        msg.text().context("content of command text is empty")?,
+        crate::BOT_NAME.get().unwrap(),
+    )
+    .context("failed to parse command")?;
+    let channel = args.get(0);
     let mut target_id = chat_id;
-    let target = &mut MsgTarget::new(chat_id, cmd.message_id);
+    let target = &mut MsgTarget::new(chat_id, msg.id);
 
-    if !channel.is_empty() {
-        let channel_id = check_channel_permission(&cmd, channel, target).await?;
+    if let Some(channel) = channel {
+        let channel_id = check_channel_permission(&bot, &msg, &channel, target).await?;
         if channel_id.is_none() {
             return Ok(());
         }
@@ -52,18 +58,21 @@ pub async fn rss(
     };
 
     let first_msg = msgs.remove(0);
-    update_response(&cmd.bot, target, parameters::Text::with_html(&first_msg)).await?;
+    update_response(
+        &bot,
+        target,
+        &first_msg,
+        Some(teloxide::types::ParseMode::Html),
+    )
+    .await?;
 
     let mut prev_msg = target.message_id;
     for msg in msgs {
-        let text = parameters::Text::with_html(&msg);
-        let msg = cmd
-            .bot
-            .send_message(chat_id, text)
-            .in_reply_to(prev_msg)
-            .is_web_page_preview_disabled(true)
-            .call()
-            .await?;
+        let mut send = bot.send_message(chat_id, msg);
+        send.reply_to_message_id = Some(prev_msg);
+        send.disable_web_page_preview = Some(true);
+        send.parse_mode = Some(teloxide::types::ParseMode::Html);
+        let msg = send.await?;
         prev_msg = msg.id;
     }
     Ok(())

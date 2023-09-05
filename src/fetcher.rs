@@ -6,7 +6,9 @@ use std::sync::{
 };
 
 use futures::{future::FutureExt, select_biased};
-use tbot::{types::parameters, Bot};
+use teloxide::requests::Requester;
+use teloxide::types::ChatId;
+use teloxide::{ApiError, Bot, RequestError};
 use tokio::{
     self,
     sync::{Mutex, Notify},
@@ -36,7 +38,9 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
                     tokio::spawn(async move {
                         opportunity.wait().await;
                         if let Err(e) = fetch_and_push_updates(bot, db, feed).await {
-                            crate::print_error(e);
+                            // crate::print_error(e);
+                            eprintln!("Error: {}", e);
+                            e.chain().skip(1).for_each(|cause| eprintln!("caused by: {}", cause));
                         }
                     });
                 }
@@ -62,7 +66,7 @@ async fn fetch_and_push_updates(
     bot: Bot,
     db: Arc<Mutex<Database>>,
     feed: Feed,
-) -> Result<(), tbot::errors::MethodCall> {
+) -> Result<(), anyhow::Error> {
     let new_feed = match pull_feed(&feed.link).await {
         Ok(feed) => feed,
         Err(e) => {
@@ -84,7 +88,8 @@ async fn fetch_and_push_updates(
                     &bot,
                     &db,
                     feed.subscribers,
-                    parameters::Text::with_html(&msg),
+                    &msg,
+                    Some(teloxide::types::ParseMode::Html),
                 )
                 .await?;
             }
@@ -107,7 +112,8 @@ async fn fetch_and_push_updates(
                         &bot,
                         &db,
                         feed.subscribers.iter().copied(),
-                        parameters::Text::with_html(&msg),
+                        &msg,
+                        Some(teloxide::types::ParseMode::Html),
                     )
                     .await?;
                 }
@@ -123,7 +129,8 @@ async fn fetch_and_push_updates(
                     &bot,
                     &db,
                     feed.subscribers.iter().copied(),
-                    parameters::Text::with_html(&msg),
+                    &msg,
+                    Some(teloxide::types::ParseMode::Html),
                 )
                 .await?;
             }
@@ -136,36 +143,41 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
     bot: &Bot,
     db: &Arc<Mutex<Database>>,
     subscribers: I,
-    msg: parameters::Text,
-) -> Result<(), tbot::errors::MethodCall> {
-    use tbot::errors::MethodCall;
+    msg: &str,
+    mode: Option<teloxide::types::ParseMode>,
+) -> Result<(), anyhow::Error> {
     for mut subscriber in subscribers {
         'retry: for _ in 0..3 {
-            match bot
-                .send_message(tbot::types::chat::Id(subscriber), msg.clone())
-                .is_web_page_preview_disabled(true)
-                .call()
-                .await
-            {
-                Err(MethodCall::RequestError { description, .. })
-                    if chat_is_unavailable(&description) =>
-                {
+            use ApiError::*;
+            match {
+                let mut send = bot.send_message(ChatId(subscriber), msg);
+                send.parse_mode = mode;
+                send.await
+            } {
+                // Err(RequestError::Api(e)) if chat_is_unavailable(&e.to_string()) => {
+                //     db.lock().await.delete_subscriber(subscriber);
+                // }
+                Err(RequestError::Api(
+                    BotBlocked
+                    | BotKickedFromSupergroup
+                    | BotKicked
+                    | UserDeactivated
+                    | ChatNotFound
+                    | NotEnoughRightsToPostMessages,
+                )) => {
                     db.lock().await.delete_subscriber(subscriber);
                 }
-                Err(MethodCall::RequestError {
-                    migrate_to_chat_id: Some(new_chat_id),
-                    ..
-                }) => {
-                    db.lock().await.update_subscriber(subscriber, new_chat_id.0);
-                    subscriber = new_chat_id.0;
+                Err(RequestError::MigrateToChatId(new_chat_id)) => {
+                    db.lock().await.update_subscriber(subscriber, new_chat_id);
+                    subscriber = new_chat_id;
                     continue 'retry;
                 }
-                Err(MethodCall::RequestError {
-                    retry_after: Some(delay),
-                    ..
-                }) => {
-                    time::sleep(Duration::from_secs(delay)).await;
+                Err(RequestError::RetryAfter(delay)) => {
+                    time::sleep(delay).await;
                     continue 'retry;
+                }
+                Err(RequestError::Api(e)) if chat_is_unavailable(&e.to_string()) => {
+                    db.lock().await.delete_subscriber(subscriber);
                 }
                 other => {
                     other?;

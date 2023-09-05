@@ -219,6 +219,7 @@ async fn update_response(
     } else {
         let mut send = bot.edit_message_text(*chat_id, *message_id, msg);
         send.parse_mode = mode;
+        send.disable_web_page_preview = Some(true);
         send.await?
     };
     target.update(msg.id);

@@ -67,57 +67,6 @@ NOTE: You can get <user id> using bots like @userinfobot @getidsbot
 
 `<token>` 请参照 [这里](https://core.telegram.org/bots#3-how-do-i-create-a-bot) 申请
 
-## 环境变量
-
-- `HTTP_PROXY`: 用于 HTTP 的代理
-- `HTTPS_PROXY`: 用于 HTTPS 的代理
-- `RSSBOT_DONT_PROXY_FEEDS`: 设为 `1` 使所有订阅的 RSS 不通过代理（仅代理 Telegram）
-- `NO_PROXY`: 暂不支持，等待 [reqwest#877](https://github.com/seanmonstar/reqwest/pull/877)
-
-## 从旧的 RSSBot 迁移
-
-对于 [原先 Clojure 版本的 Bot](https://github.com/iovxw/tg-rss-bot), 可以使用以下脚本转换数据库
-
-```bash
-#!/bin/bash
-
-DATABASE=$1
-TARGET=$2
-
-DATA=$(echo "SELECT url, title FROM rss;" | sqlite3 $DATABASE)
-IFS=$'\n'
-
-echo -e "[\c" > $TARGET
-for line in ${DATA[@]}
-do
-    IFS='|'
-    r=($line)
-    link=${r[0]}
-    title=${r[1]}
-
-    echo -e "{\"link\":\"$link\"," \
-            "\"title\":\"$title\"," \
-            "\"error_count\":0," \
-            "\"hash_list\":[]," \
-            "\"subscribers\":[\c" >> $TARGET
-
-    subscribers=$(echo "SELECT subscriber FROM subscribers WHERE rss='$link';" | sqlite3 $DATABASE)
-    IFS=$'\n'
-    for subscriber in ${subscribers[@]}
-    do
-        echo -e "$subscriber,\c" >> $TARGET
-    done
-
-    echo -e "]},\c" >> $TARGET
-done
-echo "]" >> $TARGET
-sed -i "s/,]/]/g" $TARGET
-```
-
-参数 1 为旧数据库地址, 2 为结果输出地址
-
-需要注意的是已推送的 RSS 记录不会保留, 如果直接使用转换后的数据库, 会重复推送旧的 RSS
-
 ## License
 
 This is free and unencumbered software released into the public domain.

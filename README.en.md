@@ -67,57 +67,6 @@ NOTE: You can get <user id> using bots like @userinfobot @getidsbot
 
 Please read the [official docs](https://core.telegram.org/bots#3-how-do-i-create-a-bot) to create a token.
 
-## Environment variables
-
-- `HTTP_PROXY`: Proxy for HTTP
-- `HTTPS_PROXY`: Proxy for HTTPS
-- `RSSBOT_DONT_PROXY_FEEDS`: Set to `1` to limit the proxy to Telegram requests
-- `NO_PROXY`: Not supported yet, wait for [reqwest#877](https://github.com/seanmonstar/reqwest/pull/877)
-
-## Migrating from the old RSSBot
-
-For the [original version of Clojure Bot ](https://github.com/iovxw/tg-rss-bot), you can use the following script to convert the database:
-
-```bash
-#!/bin/bash
-
-DATABASE=$1
-TARGET=$2
-
-DATA=$(echo "SELECT url, title FROM rss;" | sqlite3 $DATABASE)
-IFS=$'\n'
-
-echo -e "[\c" > $TARGET
-for line in ${DATA[@]}
-do
-    IFS='|'
-    r=($line)
-    link=${r[0]}
-    title=${r[1]}
-
-    echo -e "{\"link\":\"$link\"," \
-            "\"title\":\"$title\"," \
-            "\"error_count\":0," \
-            "\"hash_list\":[]," \
-            "\"subscribers\":[\c" >> $TARGET
-
-    subscribers=$(echo "SELECT subscriber FROM subscribers WHERE rss='$link';" | sqlite3 $DATABASE)
-    IFS=$'\n'
-    for subscriber in ${subscribers[@]}
-    do
-        echo -e "$subscriber,\c" >> $TARGET
-    done
-
-    echo -e "]},\c" >> $TARGET
-done
-echo "]" >> $TARGET
-sed -i "s/,]/]/g" $TARGET
-```
-
-Parameter 1 is the old database path, parameter 2 is the resulting output JSON path.
-
-It should be noted that the RSS records that have been pushed will not be marked. If the converted database is used directly, the old RSS will be pushed repeatedly when the script is called again.
-
 ## License
 
 This is free and unencumbered software released into the public domain.

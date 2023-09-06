@@ -152,6 +152,7 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
             match {
                 let mut send = bot.send_message(ChatId(subscriber), msg);
                 send.parse_mode = mode;
+                send.disable_web_page_preview = Some(true);
                 send.await
             } {
                 // Err(RequestError::Api(e)) if chat_is_unavailable(&e.to_string()) => {

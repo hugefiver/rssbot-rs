@@ -36,7 +36,7 @@ tokio = { version = "1.35.1", features = ["full"] }
 tokio-util = { version = "0.7.10", features = ["full"] }
 tokio-stream = "0.1.14"
 thiserror = "1.0.56"
-serde = { version = "1.0.193", features = ["derive"] }
+serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.108"
 regex = "1.10.2"
 quick-xml = { version = "0.31.0", features = ["encoding", "escape-html"] }

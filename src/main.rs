@@ -1,4 +1,3 @@
-#![feature(error_generic_member_access)]
 #![recursion_limit = "256"]
 
 use std::env;

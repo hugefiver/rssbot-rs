@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 
 use lazy_static::lazy_static;
 use quick_xml::events::attributes::Attributes;
@@ -39,7 +40,7 @@ fn parse_atom_link<'a, B: std::io::BufRead>(
         let attribute = attribute?;
         let decoder = reader.decoder();
         match decoder.decode(attribute.key.0)?.as_ref() {
-            "href" => href = Some(attribute.decode_and_unescape_value(reader)?.to_string()),
+            "href" => href = Some(attribute.decode_and_unescape_value(decoder)?.to_string()),
             "rel" => {
                 rel = Some(decoder.decode(if let Cow::Borrowed(s) = attribute.value {
                     s
@@ -365,7 +366,7 @@ impl FromXml for Option<SyPeriod> {
 /// NOTE: This function doesn't check the syntax of feed, it only cares about performance
 pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
     let mut reader = XmlReader::from_reader(reader);
-    reader.trim_text(true);
+    reader.config_mut().trim_text(true);
     let bufs = BufPool::new(4, 512);
     let mut buf = bufs.pop();
     loop {
@@ -381,7 +382,7 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
                     }
                 }
             }
-            Ok(XmlEvent::Eof) => return Err(quick_xml::Error::UnexpectedEof("feed".to_string())),
+            Ok(XmlEvent::Eof) => return Err(quick_xml::Error::Io(Arc::new(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "feed")))),
             Err(err) => return Err(err),
             _ => (),
         }
@@ -770,7 +771,7 @@ mod test {
     #[test]
     fn empty_input() {
         let r = parse(Cursor::new(&[])).unwrap_err();
-        assert!(matches!(r, quick_xml::Error::UnexpectedEof(s) if s == "feed" ))
+        assert!(matches!(r, quick_xml::Error::Io(s) if s.kind() == std::io::ErrorKind::UnexpectedEof && s.get_ref().unwrap().to_string() == "feed"));
     }
 
     #[test]

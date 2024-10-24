@@ -1,6 +1,8 @@
+use std::ops::Index;
 use std::sync::Arc;
 
 use anyhow::Context;
+use chrono::format;
 use either::Either;
 use pinyin::{Pinyin, ToPinyin};
 use teloxide::requests::Requester;
@@ -16,11 +18,18 @@ use super::{check_channel_permission, update_response, MsgTarget};
 
 pub async fn rss(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
     let chat_id = msg.chat.id;
-    let (_, args) = parse_command(
+    let (_, mut args) = parse_command(
         msg.text().context("content of command text is empty")?,
         crate::BOT_NAME.get().unwrap(),
     )
     .context("failed to parse command")?;
+
+    let raw = if let Some(i) = args.iter().position(|arg| *arg == "raw") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
     let channel = args.get(0);
     let mut target_id = chat_id;
     let target = &mut MsgTarget::new(chat_id, msg.id);
@@ -47,11 +56,19 @@ pub async fn rss(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(),
                 .collect::<Vec<Either<char, &str>>>()
         });
         format_large_msg(tr!("subscription_list").to_string(), &feeds, |feed| {
-            format!(
-                "<a href=\"{}\">{}</a>",
-                Escape(&feed.link),
-                Escape(&feed.title)
-            )
+            if !raw {
+                format!(
+                    "<a href=\"{}\">{}</a>",
+                    Escape(&feed.link),
+                    Escape(&feed.title)
+                )
+            } else {
+                format!(
+                    "<b>{}</b>\n<code>{}</code>\n",
+                    Escape(&feed.title),
+                    Escape(&feed.link)
+                )
+            }
         })
     } else {
         vec![tr!("subscription_list_empty").to_string()]

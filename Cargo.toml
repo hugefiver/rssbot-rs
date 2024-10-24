@@ -48,7 +48,7 @@ pinyin = "0.10"
 either = "1.13"
 atomicwrites = "0.4"
 clap = { version = "4.5.9", features = ["derive"] }
-teloxide = { version = "0.12.2", features = ["macros", "ctrlc_handler"], default-features = false }
+teloxide = { version = "0.13.0", features = ["macros", "ctrlc_handler"], default-features = false }
 
 # [dependencies.tbot]
 # version = "0.6"

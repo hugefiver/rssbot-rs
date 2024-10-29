@@ -92,7 +92,7 @@ pub async fn check_command(opt: &crate::Opt, bot: &Bot, msg: &Message, cmd: &Com
     if !opt.admin.is_empty() && !is_from_bot_admin(msg, &opt.admin) {
         eprintln!(
             "Unauthenticated request from user/channel: {}, command: {:?}",
-            msg.from().map_or("<nil>".to_string(), |u| u.full_name()),
+            msg.from.as_ref().map_or("<nil>".to_string(), |u| u.full_name()),
             cmd
         );
         return false;
@@ -139,7 +139,7 @@ fn is_from_bot_admin(msg: &Message, admins: &[i64]) -> bool {
     //     None => false,
     // }
 
-    let from = msg.from();
+    let from = &msg.from;
     match from {
         None => false,
         Some(u) => {
@@ -161,7 +161,7 @@ async fn is_from_chat_admin(bot: &Bot, msg: &Message) -> bool {
     //     Some(From::Chat(chat)) => chat.id == cmd.chat.id,
     //     None => false,
     // }
-    let from = msg.from();
+    let from = &msg.from;
     match from {
         None => false,
         Some(u) => {
@@ -251,7 +251,7 @@ async fn check_channel_permission(
     channel: &str,
     target: &mut MsgTarget,
 ) -> Result<Option<ChatId>, anyhow::Error> {
-    let user = msg.from().context("UNREACHABLE: message from channel")?;
+    let user = msg.from.as_ref().context("UNREACHABLE: message from channel")?;
 
     if user.is_anonymous() {
         // FIXME: error message

@@ -5,8 +5,9 @@ use anyhow::Context;
 use chrono::format;
 use either::Either;
 use pinyin::{Pinyin, ToPinyin};
+use teloxide::payloads::SendMessageSetters;
 use teloxide::requests::Requester;
-use teloxide::types::Message;
+use teloxide::types::{LinkPreviewOptions, Message, ReplyParameters};
 use teloxide::utils::command::parse_command;
 use teloxide::Bot;
 use tokio::sync::Mutex;
@@ -85,9 +86,19 @@ pub async fn rss(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(),
 
     let mut prev_msg = target.message_id;
     for msg in msgs {
-        let mut send = bot.send_message(chat_id, msg);
-        send.reply_to_message_id = Some(prev_msg);
-        send.disable_web_page_preview = Some(true);
+        let mut send = bot
+            .send_message(chat_id, msg)
+            .link_preview_options(LinkPreviewOptions {
+                is_disabled: true,
+                url: None,
+                prefer_large_media: false,
+                prefer_small_media: false,
+                show_above_text: false,
+            })
+            .reply_parameters(ReplyParameters {
+                message_id: prev_msg,
+                ..Default::default()
+            });
         send.parse_mode = Some(teloxide::types::ParseMode::Html);
         let msg = send.await?;
         prev_msg = msg.id;

@@ -2,28 +2,29 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use teloxide::{
+    payloads::SendDocumentSetters,
     requests::Requester,
-    types::{InputFile, Message},
-    Bot, utils::command::parse_command,
+    types::{InputFile, Message, ReplyParameters},
+    utils::command::parse_command,
+    Bot,
 };
 use tokio::sync::Mutex;
 
-use crate::{data::Database, BOT_NAME};
 use crate::opml::into_opml;
+use crate::{data::Database, BOT_NAME};
 
 use super::{check_channel_permission, update_response, MsgTarget};
 
-pub async fn export(
-    bot: Bot,
-    msg: Message,
-    db: Arc<Mutex<Database>>,
-) -> Result<(), anyhow::Error> {
+pub async fn export(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
     let chat_id = msg.chat.id;
     let mut target_id = chat_id;
     let target = &mut MsgTarget::new(chat_id, msg.id);
 
-    let (_, args) = parse_command(msg.text().context("content of command text is empty")?, BOT_NAME.get().unwrap())
-        .context("failed to parse command")?;
+    let (_, args) = parse_command(
+        msg.text().context("content of command text is empty")?,
+        BOT_NAME.get().unwrap(),
+    )
+    .context("failed to parse command")?;
     let channel = args.get(0);
 
     if let Some(channel) = channel {
@@ -42,8 +43,12 @@ pub async fn export(
     let opml = into_opml(feeds.unwrap());
 
     let file = InputFile::memory(opml.into_bytes()).file_name("feeds.opml");
-    let mut send = bot.send_document(chat_id, file);
-    send.reply_to_message_id = Some(msg.id);
+    let send = bot
+        .send_document(chat_id, file)
+        .reply_parameters(ReplyParameters {
+            message_id: msg.id,
+            ..Default::default()
+        });
     send.await?;
     Ok(())
 }

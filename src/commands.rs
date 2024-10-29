@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use teloxide::{
+    payloads::{EditMessageTextSetters, SendMessageSetters},
     requests::Requester,
-    types::{ChatId, Message, MessageId, ParseMode},
+    types::{ChatId, LinkPreviewOptions, Message, MessageId, ParseMode, ReplyParameters},
     ApiError, Bot, RequestError,
 };
 use tokio::sync::Mutex;
@@ -210,16 +211,34 @@ async fn update_response(
         message_id,
         first_time,
     } = target;
+    let mode = mode.unwrap_or(ParseMode::MarkdownV2);
     let msg = if *first_time {
-        let mut send = bot.send_message(*chat_id, msg);
-        send.reply_to_message_id = Some(*message_id);
-        send.disable_web_page_preview = Some(true);
-        send.parse_mode = mode;
+        let send = bot
+            .send_message(*chat_id, msg)
+            .link_preview_options(LinkPreviewOptions {
+                is_disabled: true,
+                url: None,
+                prefer_large_media: false,
+                prefer_small_media: false,
+                show_above_text: false,
+            })
+            .reply_parameters(ReplyParameters {
+                message_id: *message_id,
+                ..Default::default()
+            })
+            .parse_mode(mode);
         send.await?
     } else {
-        let mut send = bot.edit_message_text(*chat_id, *message_id, msg);
-        send.parse_mode = mode;
-        send.disable_web_page_preview = Some(true);
+        let send = bot
+            .edit_message_text(*chat_id, *message_id, msg)
+            .parse_mode(mode)
+            .link_preview_options(LinkPreviewOptions {
+                is_disabled: true,
+                url: None,
+                prefer_large_media: false,
+                prefer_small_media: false,
+                show_above_text: false,
+            });
         send.await?
     };
     target.update(msg.id);

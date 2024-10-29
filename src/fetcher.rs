@@ -6,8 +6,9 @@ use std::sync::{
 };
 
 use futures::{future::FutureExt, select_biased};
+use teloxide::payloads::SendMessageSetters;
 use teloxide::requests::Requester;
-use teloxide::types::ChatId;
+use teloxide::types::{ChatId, LinkPreviewOptions, ParseMode};
 use teloxide::{ApiError, Bot, RequestError};
 use tokio::{
     self,
@@ -150,9 +151,16 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
         'retry: for _ in 0..3 {
             use ApiError::*;
             match {
-                let mut send = bot.send_message(ChatId(subscriber), msg);
-                send.parse_mode = mode;
-                send.disable_web_page_preview = Some(true);
+                let send = bot
+                    .send_message(ChatId(subscriber), msg)
+                    .link_preview_options(LinkPreviewOptions {
+                        is_disabled: true,
+                        url: None,
+                        prefer_large_media: false,
+                        prefer_small_media: false,
+                        show_above_text: false,
+                    })
+                    .parse_mode(mode.unwrap_or(ParseMode::MarkdownV2));
                 send.await
             } {
                 // Err(RequestError::Api(e)) if chat_is_unavailable(&e.to_string()) => {
@@ -169,12 +177,12 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
                     db.lock().await.delete_subscriber(subscriber);
                 }
                 Err(RequestError::MigrateToChatId(new_chat_id)) => {
-                    db.lock().await.update_subscriber(subscriber, new_chat_id);
-                    subscriber = new_chat_id;
+                    db.lock().await.update_subscriber(subscriber, new_chat_id.0);
+                    subscriber = new_chat_id.0;
                     continue 'retry;
                 }
                 Err(RequestError::RetryAfter(delay)) => {
-                    time::sleep(delay).await;
+                    time::sleep(delay.duration()).await;
                     continue 'retry;
                 }
                 Err(RequestError::Api(e)) if chat_is_unavailable(&e.to_string()) => {

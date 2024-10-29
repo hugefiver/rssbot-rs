@@ -6,6 +6,7 @@ use std::sync::{
 };
 
 use futures::{future::FutureExt, select_biased};
+use reqwest::Url;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::requests::Requester;
 use teloxide::types::{ChatId, LinkPreviewOptions, ParseMode};
@@ -68,7 +69,24 @@ async fn fetch_and_push_updates(
     db: Arc<Mutex<Database>>,
     feed: Feed,
 ) -> Result<(), anyhow::Error> {
-    let new_feed = match pull_feed(&feed.link).await {
+    let mut preview = false;
+    let url = match Url::parse(&feed.link) {
+        Ok(mut url) => {
+            let query: Vec<_> = url
+                .query_pairs()
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect();
+            if query.iter().filter(|(k, _)| k == "preview").count() > 0 {
+                preview = true;
+            }
+            url.query_pairs_mut()
+                .clear()
+                .extend_pairs(query.into_iter().filter(|(k, _)| k != "preview"));
+            &url.to_string()
+        }
+        Err(_) => &feed.link,
+    };
+    let new_feed = match pull_feed(url).await {
         Ok(feed) => feed,
         Err(e) => {
             let down_time = db.lock().await.get_or_update_down_time(&feed.link);
@@ -91,6 +109,7 @@ async fn fetch_and_push_updates(
                     feed.subscribers,
                     &msg,
                     Some(teloxide::types::ParseMode::Html),
+                    false,
                 )
                 .await?;
             }
@@ -115,6 +134,7 @@ async fn fetch_and_push_updates(
                         feed.subscribers.iter().copied(),
                         &msg,
                         Some(teloxide::types::ParseMode::Html),
+                        preview,
                     )
                     .await?;
                 }
@@ -132,6 +152,7 @@ async fn fetch_and_push_updates(
                     feed.subscribers.iter().copied(),
                     &msg,
                     Some(teloxide::types::ParseMode::Html),
+                    false,
                 )
                 .await?;
             }
@@ -146,6 +167,7 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
     subscribers: I,
     msg: &str,
     mode: Option<teloxide::types::ParseMode>,
+    preview: bool,
 ) -> Result<(), anyhow::Error> {
     for mut subscriber in subscribers {
         'retry: for _ in 0..3 {
@@ -154,10 +176,10 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
                 let send = bot
                     .send_message(ChatId(subscriber), msg)
                     .link_preview_options(LinkPreviewOptions {
-                        is_disabled: true,
+                        is_disabled: !preview,
                         url: None,
                         prefer_large_media: false,
-                        prefer_small_media: false,
+                        prefer_small_media: true,
                         show_above_text: false,
                     })
                     .parse_mode(mode.unwrap_or(ParseMode::MarkdownV2));

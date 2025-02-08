@@ -1,7 +1,6 @@
-use std::env;
+use std::{env, sync::OnceLock};
 use std::time::Duration;
 
-use once_cell::sync::OnceCell;
 use reqwest::{
     self,
     header::{HeaderValue, CONTENT_TYPE},
@@ -10,8 +9,8 @@ use thiserror::Error;
 
 use crate::feed::Rss;
 
-static RESP_SIZE_LIMIT: OnceCell<u64> = OnceCell::new();
-static CLIENT: OnceCell<reqwest::Client> = OnceCell::new();
+static RESP_SIZE_LIMIT: OnceLock<u64> = OnceLock::new();
+static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 #[derive(Error, Debug)]
 pub enum FeedError {

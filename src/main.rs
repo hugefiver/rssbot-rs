@@ -5,10 +5,10 @@ use std::panic;
 use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use anyhow::Context;
 use clap::Parser;
-use once_cell::sync::OnceCell;
 
 use teloxide::types::UserId;
 use tokio::{self, sync::Mutex};
@@ -27,8 +27,8 @@ mod opml;
 
 use crate::data::Database;
 
-static BOT_NAME: OnceCell<String> = OnceCell::new();
-static BOT_ID: OnceCell<UserId> = OnceCell::new();
+static BOT_NAME: OnceLock<String> = OnceLock::new();
+static BOT_ID: OnceLock<UserId> = OnceLock::new();
 
 #[derive(Debug, clap::Parser)]
 #[command(

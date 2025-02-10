@@ -4,9 +4,8 @@ use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::str;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
-use lazy_static::lazy_static;
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::BytesStart;
 use quick_xml::events::Event as XmlEvent;
@@ -382,7 +381,12 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
                     }
                 }
             }
-            Ok(XmlEvent::Eof) => return Err(quick_xml::Error::Io(Arc::new(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "feed")))),
+            Ok(XmlEvent::Eof) => {
+                return Err(quick_xml::Error::Io(Arc::new(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "feed",
+                ))))
+            }
             Err(err) => return Err(err),
             _ => (),
         }
@@ -407,9 +411,7 @@ fn url_relative_to_absolute(link: &mut String, host: &str) {
 }
 
 pub fn fix_relative_url(mut rss: Rss, rss_link: &str) -> Rss {
-    lazy_static! {
-        static ref HOST: Regex = Regex::new(r"^(https?://[^/]+)").unwrap();
-    }
+    static HOST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(https?://[^/]+)").unwrap());
     let rss_host = HOST
         .captures(rss_link)
         .map_or(rss_link, |r| r.get(0).unwrap().as_str());
@@ -771,7 +773,9 @@ mod test {
     #[test]
     fn empty_input() {
         let r = parse(Cursor::new(&[])).unwrap_err();
-        assert!(matches!(r, quick_xml::Error::Io(s) if s.kind() == std::io::ErrorKind::UnexpectedEof && s.get_ref().unwrap().to_string() == "feed"));
+        assert!(
+            matches!(r, quick_xml::Error::Io(s) if s.kind() == std::io::ErrorKind::UnexpectedEof && s.get_ref().unwrap().to_string() == "feed")
+        );
     }
 
     #[test]

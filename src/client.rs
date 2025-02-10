@@ -151,7 +151,7 @@ mod test {
 
     #[test]
     fn max_format_byte_size() {
-        assert_eq!(format_byte_size(std::u64::MAX), "16EiB");
+        assert_eq!(format_byte_size(u64::MAX), "16EiB");
     }
 
     #[test]

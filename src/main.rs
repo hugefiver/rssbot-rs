@@ -7,9 +7,10 @@ use std::process;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use clap::Parser;
 
+use reqwest::Url;
 use teloxide::types::UserId;
 use tokio::{self, sync::Mutex};
 
@@ -65,9 +66,8 @@ pub struct Opt {
     // default is 12 hours
     max_interval: u32,
     /// Maximum feed size, 0 is unlimited
-    #[arg(long, value_name = "bytes", default_value = "2097152")]
-    // default is 2MiB
-    max_feed_size: u64,
+    #[arg(long, value_name = "bytes", default_value = "2M")]
+    max_feed_size: String,
     /// Private mode, only specified user can use this bot.
     /// This argument can be passed multiple times to allow multiple admins
     #[arg(
@@ -80,6 +80,13 @@ pub struct Opt {
     /// Make bot commands only accessible for group admins.
     #[arg(long)]
     restricted: bool,
+    /// Custom telegram api URI
+    #[arg(
+        long,
+        value_name = "TG API URL",
+        default_value = "https://api.telegram.org/"
+    )]
+    api_uri: Url,
     /// DANGER: Insecure mode, accept invalid TLS certificates
     #[arg(long)]
     insecure: bool,
@@ -95,11 +102,28 @@ fn parse_check_interval(s: &str) -> Result<u32, String> {
     })
 }
 
+/// Parse human readable size into bytes.
+fn parse_human_size(s: &str) -> anyhow::Result<u64> {
+    const BASE: u64 = 1024;
+    let s = s.trim().trim_end_matches(|x| x == 'B' || x == 'b');
+    match s.chars().last().map(|x| x.to_ascii_lowercase()) {
+        Some('b') => Ok(s[..s.len() - 1].parse()?),
+        Some('k') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE),
+        Some('m') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE.pow(2)),
+        Some('g') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE.pow(3)),
+        Some('t') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE.pow(4)),
+        Some(x) if x.is_ascii_digit() => Ok(s.parse()?),
+        Some(x) => Err(anyhow!("invalid size character: {}", x)),
+        None => Err(anyhow!("empty size")),
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     enable_fail_fast();
 
     let opt = Opt::parse();
+    println!("Starting with options: {:#?}", opt);
     let db = Arc::new(Mutex::new(Database::open(opt.database.clone())?));
     // let bot = if let Some(proxy) = init_proxy() {
     //     tbot::bot::Builder::with_string_token(opt.token.clone())
@@ -108,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
     // } else {
     //     tbot::Bot::new(opt.token.clone())
     // };
-    let bot = teloxide::Bot::new(&opt.token);
+    let bot = teloxide::Bot::new(&opt.token).set_api_url(opt.api_uri.clone());
     let me = bot
         .get_me()
         .await
@@ -116,7 +140,11 @@ async fn main() -> anyhow::Result<()> {
 
     let bot_name = me.user.username.clone().context("Bot name is not set")?;
     let bot_id = me.user.id;
-    crate::client::init_client(&bot_name, opt.insecure, opt.max_feed_size);
+    crate::client::init_client(
+        &bot_name,
+        opt.insecure,
+        parse_human_size(&opt.max_feed_size).context("Invalid max_feed_size")?,
+    );
 
     BOT_NAME.set(bot_name).unwrap();
     BOT_ID.set(bot_id).unwrap();
@@ -278,4 +306,17 @@ fn print_anyhow_error(e: anyhow::Error) {
     //     let bt = e.backtrace();
     //     eprintln!("Backtrace:\n{:#?}", bt);
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_human_size() {
+        assert_eq!(parse_human_size("2M").unwrap(), 2_097_152);
+        assert_eq!(parse_human_size("2G").unwrap(), 2_147_483_648);
+        assert_eq!(parse_human_size("2mb").unwrap(), 2_097_152);
+        assert_eq!(parse_human_size("2097152").unwrap(), 2_097_152);
+    }
 }

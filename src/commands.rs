@@ -111,7 +111,7 @@ pub async fn check_command(opt: &crate::Opt, bot: &Bot, msg: &Message, cmd: &Com
         }
         // Restrict mode: bot commands are only accessible to admins.
         Public(ChatPublic {
-            kind: Group(_) | Supergroup(_),
+            kind: Group | Supergroup(_),
             ..
         }) if opt.restricted => {
             let user_is_admin = is_from_chat_admin(bot, msg).await;

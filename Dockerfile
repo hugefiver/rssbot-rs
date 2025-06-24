@@ -23,15 +23,16 @@ RUN apk add --no-cache \
 #     echo -n "${RUST_TARGET}" > /.triple
 
 ARG AMD64VERSION
-RUN case "${AMD64VERSION}" in \
-    "v2" ) RUSTFLAGS="-C target_cpu=x86-64-v2" ;; \
-    "v3" ) RUSTFLAGS="-C target_cpu=x86_64-v3" ;; \
-    "v4" ) RUSTFLAGS="-C target_cpu=x86_64-v4" ;; \
-    esac; \
-    echo -n "${RUSTFLAGS}" >> /.rustflags
+ARG TARGETARCH
+RUN if [ "${TARGETARCH}" == "amd64" ]; then \
+    case "${AMD64VERSION}" in \
+        "v2" ) RUSTFLAGS="-C target_cpu=x86-64-v2" ;; \
+        "v3" ) RUSTFLAGS="-C target_cpu=x86_64-v3" ;; \
+        "v4" ) RUSTFLAGS="-C target_cpu=x86_64-v4" ;; \
+    esac;  fi; \
+    echo -n "${RUSTFLAGS}" > /.rustflags;
 
 # RUN rustup toolchain add stable --profile minimal
-
 COPY . .
 
 ARG LOCALE=zh

@@ -20,6 +20,7 @@ on:
         description: "Override image tag"
         required: false
         type: string
+        default: "latest"
 
 env:
   IMAGE_NAME: rssbot

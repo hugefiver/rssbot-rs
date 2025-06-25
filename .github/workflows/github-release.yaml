@@ -1,0 +1,48 @@
+name: Publish Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        locale: [en, zh]
+        platform:
+          - name: Windows-x86
+            target: i686-pc-windows-gnu
+          - name: Windows-x86_64
+            target: x86_64-pc-windows-gnu
+          - name: Linux-x86
+            target: i686-unknown-linux-gnu
+          - name: Linux-x86_64-musl
+            target: x86_64-unknown-linux-musl
+          - name: Linux-aarch64-musl
+            target: aarch64-unknown-linux-musl
+          # - name: mACoS-aarch64
+          #   target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v1
+        env:
+          LOCALE: ${{ matrix.locale }}
+        with:
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
+
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
+        with:
+          executable-name: rssbot
+          target: ${{ matrix.platform.target }}
+          archive-name: rssbot-${{ matrix.locale }}-${{ matrix.platform.name }}
+          changes-file: ""
+          action-gh-release-parameters: '{"generate_release_notes": false}'

@@ -16,7 +16,23 @@ on:
         description: "Override amd64 version"
         required: false
         type: string
-      tag:
+      tags:
+        description: "Override image tag"
+        required: false
+        type: string
+        default: "latest"
+  workflow_call:
+    inputs:
+      platform:
+        description: "Build image for"
+        required: true
+        default: "linux/amd64"
+        type: string
+      amd64_version:
+        description: "Override amd64 version"
+        required: false
+        type: string
+      tags:
         description: "Override image tag"
         required: false
         type: string
@@ -24,6 +40,8 @@ on:
   push:
     branches:
       - dev
+    tags:
+      - 'v*.*'
 
 env:
   IMAGE_NAME: rssbot
@@ -50,17 +68,26 @@ jobs:
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/${IMAGE_NAME}_${{ matrix.locale }}
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
-          PROXY_IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$PROXY_IMAGE_NAME
-          PROXY_IMAGE_ID=$(echo $PROXY_IMAGE_ID | tr '[A-Z]' '[a-z]')
           PLATFORM="linux/amd64"
           [ -n "${{ github.event.inputs.platform }}" ] && PLATFORM="${{ github.event.inputs.platform }}"
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
           [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
           [ "$VERSION" == "master" ] && VERSION=latest
-          [ -n "${{ github.event.inputs.tag }}" ] && VERSION="${{ github.event.inputs.tag }}"
+          TAGS="$VERSION"
+          [ -n "${{ github.event.inputs.tags }}" ] && TAGS="${{ github.event.inputs.tags }}"
+          TAGS=$(echo "$TAGS" | tr ',' '\n')
+          IMAGE_TAGS=""
+          for TAG in $TAGS; do
+            if [ -n "$IMAGE_TAGS" ]; then
+              IMAGE_TAGS="$IMAGE_TAGS,"
+            fi
+            IMAGE_TAGS="${IMAGE_TAGS}${IMAGE_ID}:$TAG"
+          done
           echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+          echo "image_tags=$IMAGE_TAGS" >> $GITHUB_OUTPUT
           echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Login ghcr.io
         uses: docker/login-action@v3
@@ -83,7 +110,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.image_tags }}
           labels: runnumber=${{ github.run_id }}
           provenance: false
           platforms: ${{ steps.meta.outputs.platform }}

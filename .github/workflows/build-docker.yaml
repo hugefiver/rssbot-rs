@@ -21,6 +21,9 @@ on:
         required: false
         type: string
         default: "latest"
+  push:
+    branches:
+      - dev
 
 env:
   IMAGE_NAME: rssbot

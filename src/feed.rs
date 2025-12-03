@@ -134,11 +134,48 @@ impl FromXml for Option<String> {
                 Ok(XmlEvent::Text(ref e)) => {
                     let raw = reader.decoder().decode(e.as_ref())?;
                     let text = quick_xml::escape::unescape(&raw)?.into_owned();
-                    content = Some(text);
+                    match content.as_mut() {
+                        Some(existing) => existing.push_str(&text),
+                        None => content = Some(text),
+                    }
                 }
                 Ok(XmlEvent::CData(ref e)) => {
                     let text = reader.decoder().decode(e)?.to_string();
                     content = Some(text);
+                }
+                Ok(XmlEvent::GeneralRef(ref e)) => {
+                    let raw = reader.decoder().decode(e.as_ref())?;
+                    let text = if let Some(num_str) = raw.strip_prefix('#') {
+                        if let Ok(code_point) = if let Some(hex) = num_str.strip_prefix('x') {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            num_str.parse()
+                        } {
+                            if let Some(ch) = char::from_u32(code_point) {
+                                ch.to_string()
+                            } else {
+                                format!("&{};", raw)
+                            }
+                        } else {
+                            format!("&{};", raw)
+                        }
+                    } else {
+                        match raw.as_ref() {
+                            "apos" => "'".to_string(),
+                            "quot" => "\"".to_string(),
+                            "amp" => "&".to_string(),
+                            "lt" => "<".to_string(),
+                            "gt" => ">".to_string(),
+                            _ => {
+                                // 未知命名实体，保持原样
+                                format!("&{};", raw)
+                            }
+                        }
+                    };
+                    match content.as_mut() {
+                        Some(existing) => existing.push_str(&text),
+                        None => content = Some(text),
+                    }
                 }
                 Ok(XmlEvent::End(_)) | Ok(XmlEvent::Eof) => break,
                 Err(err) => return Err(err),

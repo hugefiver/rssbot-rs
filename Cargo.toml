@@ -12,7 +12,6 @@ hosted-by-iovxw = ["reqwest/trust-dns"]
 native-tls = [
     # "tbot/default",
     "teloxide/native-tls",
-    "hyper-proxy/default",
     "reqwest/default",
     "reqwest/native-tls-vendored",
     "reqwest/native-tls-alpn",
@@ -20,7 +19,6 @@ native-tls = [
 rustls = [
     # "tbot/rustls",
     "teloxide/rustls",
-    "hyper-proxy/rustls",
     "reqwest/rustls-tls",
 ]
 
@@ -53,10 +51,6 @@ teloxide = { version = "0.17.0", features = ["macros", "ctrlc_handler"], default
 # git = "https://gitlab.com/SnejUgal/tbot.git"
 # default-features = false
 # features = ["proxy"]
-
-[dependencies.hyper-proxy]
-version = "0.9"
-default-features = false
 
 [dependencies.reqwest]
 version = "0.12"

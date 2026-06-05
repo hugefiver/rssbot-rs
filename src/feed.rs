@@ -39,7 +39,13 @@ fn parse_atom_link<'a, B: std::io::BufRead>(
         let attribute = attribute?;
         let decoder = reader.decoder();
         match decoder.decode(attribute.key.0)?.as_ref() {
-            "href" => href = Some(attribute.decode_and_unescape_value(decoder)?.to_string()),
+            "href" => {
+                href = Some(
+                    attribute
+                        .decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, decoder)?
+                        .to_string(),
+                )
+            }
             "rel" => {
                 rel = Some(decoder.decode(if let Cow::Borrowed(s) = attribute.value {
                     s

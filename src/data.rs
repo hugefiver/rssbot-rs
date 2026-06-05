@@ -245,7 +245,7 @@ impl Database {
         true
     }
 
-    pub fn unsubscribe(&mut self, subscriber: SubscriberId, rss_link: &str) -> Option<Feed> {
+    pub fn unsubscribe(&mut self, subscriber: SubscriberId, rss_link: &str) -> Option<FeedInfo> {
         let feed_id = gen_hash(&rss_link);
 
         let clear_subscriber;
@@ -267,7 +267,7 @@ impl Database {
         if let Some(feed) = self.feeds.get_mut(&feed_id) {
             if feed.subscribers.remove(&subscriber) {
                 clear_feed = feed.subscribers.is_empty();
-                result = feed.clone();
+                result = FeedInfo::from(&*feed);
             } else {
                 return None;
             }
@@ -664,6 +664,36 @@ mod test {
         assert_eq!(summaries.len(), 1);
         assert_eq!(
             summaries[0],
+            FeedInfo {
+                link: rss_link.to_string(),
+                title: "Example".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn unsubscribe_returns_link_title_summary() {
+        let rss_link = "https://example.com/feed.xml";
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed(rss_link, &rss);
+
+        let subscriber: SubscriberId = 12345;
+        let feed_id = gen_hash(&rss_link);
+
+        db.subscribers
+            .entry(subscriber)
+            .or_default()
+            .insert(feed_id);
+        db.feeds
+            .get_mut(&feed_id)
+            .unwrap()
+            .subscribers
+            .insert(subscriber);
+
+        let result = db.unsubscribe(subscriber, rss_link);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap(),
             FeedInfo {
                 link: rss_link.to_string(),
                 title: "Example".to_string(),

@@ -52,12 +52,6 @@ impl Feed {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Hub {
-    pub callback: String,
-    pub secret: String,
-}
-
 #[derive(Debug)]
 pub struct Database {
     path: PathBuf,

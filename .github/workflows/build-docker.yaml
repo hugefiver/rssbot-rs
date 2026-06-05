@@ -114,7 +114,7 @@ jobs:
           labels: runnumber=${{ github.run_id }}
           provenance: false
           platforms: ${{ steps.meta.outputs.platform }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=rssbot-${{ matrix.locale }}
+          cache-to: type=gha,mode=max,scope=rssbot-${{ matrix.locale }}
           build-args: |
             AMD64_VERSION=${{ github.event.inputs.amd64_version }}

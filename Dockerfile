@@ -22,10 +22,10 @@ RUN apk add --no-cache \
 #     esac; \
 #     echo -n "${RUST_TARGET}" > /.triple
 
-ARG AMD64VERSION
+ARG AMD64_VERSION
 ARG TARGETARCH
 RUN if [ "${TARGETARCH}" == "amd64" ]; then \
-    case "${AMD64VERSION}" in \
+    case "${AMD64_VERSION}" in \
         "v2" ) RUSTFLAGS="-C target_cpu=x86-64-v2" ;; \
         "v3" ) RUSTFLAGS="-C target_cpu=x86_64-v3" ;; \
         "v4" ) RUSTFLAGS="-C target_cpu=x86_64-v4" ;; \

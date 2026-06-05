@@ -149,8 +149,11 @@ async fn main() -> anyhow::Result<()> {
     BOT_NAME.set(bot_name).unwrap();
     BOT_ID.set(bot_id).unwrap();
 
-    gardener::start_pruning(bot.clone(), db.clone());
-    fetcher::start(bot.clone(), db.clone(), opt.min_interval, opt.max_interval);
+    let _gardener_task = gardener::start_pruning(bot.clone(), db.clone());
+    let fetcher::FetcherTasks {
+        scheduler: _fetcher_scheduler_task,
+        database_flusher: _database_flusher_task,
+    } = fetcher::start(bot.clone(), db.clone(), opt.min_interval, opt.max_interval);
 
     let opt = Arc::new(opt);
 

@@ -10,7 +10,7 @@ use tokio::{
 use crate::data::Database;
 use crate::BOT_ID;
 
-pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) {
+pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) -> tokio::task::JoinHandle<()> {
     let mut interval = time::interval(Duration::from_secs(24 * 60 * 60));
     tokio::spawn(async move {
         loop {
@@ -21,7 +21,7 @@ pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) {
                 e.chain().skip(1).for_each(|cause| eprintln!("caused by: {}", cause));
             }
         }
-    });
+    })
 }
 
 async fn prune(bot: &Bot, db: &Mutex<Database>) -> Result<(), anyhow::Error> {
@@ -40,4 +40,17 @@ async fn prune(bot: &Bot, db: &Mutex<Database>) -> Result<(), anyhow::Error> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_pruning_returns_join_handle_type() {
+        fn assert_start_signature(_: fn(Bot, Arc<Mutex<Database>>) -> tokio::task::JoinHandle<()>) {
+        }
+
+        assert_start_signature(start_pruning);
+    }
 }

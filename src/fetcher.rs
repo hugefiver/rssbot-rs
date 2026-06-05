@@ -22,13 +22,23 @@ use crate::client::pull_feed;
 use crate::data::{Database, FeedFetchInfo, FeedUpdate};
 use crate::messages::{format_large_msg, Escape};
 
-pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval: u32) {
+pub struct FetcherTasks {
+    pub scheduler: tokio::task::JoinHandle<()>,
+    pub database_flusher: tokio::task::JoinHandle<()>,
+}
+
+pub fn start(
+    bot: Bot,
+    db: Arc<Mutex<Database>>,
+    min_interval: u32,
+    max_interval: u32,
+) -> FetcherTasks {
     let mut queue = FetchQueue::new();
     let mut interval = time::interval_at(Instant::now(), Duration::from_secs(min_interval as u64));
     let throttle = Throttle::new(min_interval as usize);
 
     let db_flush = db.clone();
-    tokio::spawn(async move {
+    let database_flusher = tokio::spawn(async move {
         let mut flush_interval = time::interval(Duration::from_secs(5));
         loop {
             flush_interval.tick().await;
@@ -41,7 +51,7 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
         }
     });
 
-    tokio::spawn(async move {
+    let scheduler = tokio::spawn(async move {
         loop {
             select_biased! {
                 feed = queue.next().fuse() => {
@@ -73,6 +83,11 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
             }
         }
     });
+
+    FetcherTasks {
+        scheduler,
+        database_flusher,
+    }
 }
 
 pub async fn flush_database(db: &Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
@@ -303,5 +318,17 @@ impl Opportunity {
 impl Drop for Opportunity {
     fn drop(&mut self) {
         self.counter.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_returns_fetcher_tasks_type() {
+        fn assert_start_signature(_: fn(Bot, Arc<Mutex<Database>>, u32, u32) -> FetcherTasks) {}
+
+        assert_start_signature(start);
     }
 }

@@ -12,7 +12,7 @@ use teloxide::types::{ChatId, LinkPreviewOptions, ParseMode};
 use teloxide::{ApiError, Bot, RequestError};
 use tokio::{
     self,
-    sync::{Mutex, Notify},
+    sync::{Mutex, Notify, Semaphore},
     time::{self, Duration, Instant},
 };
 use tokio_stream::StreamExt;
@@ -27,6 +27,8 @@ pub struct FetcherTasks {
     pub database_flusher: tokio::task::JoinHandle<()>,
 }
 
+const MAX_CONCURRENT_FETCHES: usize = 16;
+
 pub fn start(
     bot: Bot,
     db: Arc<Mutex<Database>>,
@@ -36,6 +38,7 @@ pub fn start(
     let mut queue = FetchQueue::new();
     let mut interval = time::interval_at(Instant::now(), Duration::from_secs(min_interval as u64));
     let throttle = Throttle::new(min_interval as usize);
+    let fetch_permits = Arc::new(Semaphore::new(MAX_CONCURRENT_FETCHES));
 
     let db_flush = db.clone();
     let database_flusher = tokio::spawn(async move {
@@ -59,12 +62,15 @@ pub fn start(
                     let bot = bot.clone();
                     let db = db.clone();
                     let opportunity = throttle.acquire();
+                    let fetch_permits = fetch_permits.clone();
                     tokio::spawn(async move {
                         opportunity.wait().await;
-                        if let Err(e) = fetch_and_push_updates(bot, db, feed).await {
-                            eprintln!("Error: {}", e);
-                            e.chain().skip(1).for_each(|cause| eprintln!("caused by: {}", cause));
-                        }
+                        run_with_fetch_permit(fetch_permits, async {
+                            if let Err(e) = fetch_and_push_updates(bot, db, feed).await {
+                                eprintln!("Error: {}", e);
+                                e.chain().skip(1).for_each(|cause| eprintln!("caused by: {}", cause));
+                            }
+                        }).await;
                     });
                 }
                 _ = interval.tick().fuse() => {
@@ -321,6 +327,14 @@ impl Drop for Opportunity {
     }
 }
 
+async fn run_with_fetch_permit<F>(semaphore: Arc<Semaphore>, future: F)
+where
+    F: std::future::Future<Output = ()>,
+{
+    let _permit = semaphore.acquire_owned().await.expect("semaphore closed");
+    future.await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +344,37 @@ mod tests {
         fn assert_start_signature(_: fn(Bot, Arc<Mutex<Database>>, u32, u32) -> FetcherTasks) {}
 
         assert_start_signature(start);
+    }
+
+    #[tokio::test]
+    async fn run_with_fetch_permit_limits_concurrent_work() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_seen = Arc::new(AtomicUsize::new(0));
+
+        let mut handles = Vec::new();
+
+        for _ in 0..8 {
+            let semaphore = semaphore.clone();
+            let active = active.clone();
+            let max_seen = max_seen.clone();
+
+            handles.push(tokio::spawn(run_with_fetch_permit(semaphore, async move {
+                let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                max_seen.fetch_max(now, Ordering::SeqCst);
+
+                tokio::time::sleep(Duration::from_millis(10)).await;
+
+                active.fetch_sub(1, Ordering::SeqCst);
+            })));
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        assert!(max_seen.load(Ordering::SeqCst) <= 2);
     }
 }

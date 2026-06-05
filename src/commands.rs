@@ -143,8 +143,11 @@ fn is_from_bot_admin(msg: &Message, admins: &[i64]) -> bool {
     match from {
         None => false,
         Some(u) => {
-            let user_id = u.id;
-            admins.contains(&(user_id.0 as i64))
+            let user_id: i64 = match u.id.0.try_into() {
+                Ok(id) => id,
+                Err(_) => return false,
+            };
+            admins.contains(&user_id)
         }
     }
 }

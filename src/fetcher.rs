@@ -5,7 +5,6 @@ use std::sync::{
     Arc,
 };
 
-use futures::{future::FutureExt, select_biased};
 use teloxide::payloads::SendMessageSetters;
 use teloxide::requests::Requester;
 use teloxide::types::{ChatId, LinkPreviewOptions, ParseMode};
@@ -56,8 +55,9 @@ pub fn start(
 
     let scheduler = tokio::spawn(async move {
         loop {
-            select_biased! {
-                feed = queue.next().fuse() => {
+            tokio::select! {
+                biased;
+                feed = queue.next() => {
                     let feed = feed.expect("unreachable");
                     let bot = bot.clone();
                     let db = db.clone();
@@ -73,7 +73,7 @@ pub fn start(
                         }).await;
                     });
                 }
-                _ = interval.tick().fuse() => {
+                _ = interval.tick() => {
                     let feeds = db.lock().await.feed_fetch_info();
                     for feed in feeds {
                         let feed_interval = cmp::min(

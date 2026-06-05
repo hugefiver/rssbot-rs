@@ -7,7 +7,7 @@ use std::process;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Parser;
 
 use reqwest::Url;
@@ -105,7 +105,7 @@ fn parse_check_interval(s: &str) -> Result<u32, String> {
 /// Parse human readable size into bytes.
 fn parse_human_size(s: &str) -> anyhow::Result<u64> {
     const BASE: u64 = 1024;
-    let s = s.trim().trim_end_matches(|x| x == 'B' || x == 'b');
+    let s = s.trim().trim_end_matches(['B', 'b']);
     match s.chars().last().map(|x| x.to_ascii_lowercase()) {
         Some('b') => Ok(s[..s.len() - 1].parse()?),
         Some('k') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE),

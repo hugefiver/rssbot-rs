@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use teloxide::{requests::Requester, types::ChatId, Bot};
+use teloxide::{Bot, requests::Requester, types::ChatId};
 use tokio::{
     self,
     sync::Mutex,
     time::{self, Duration},
 };
 
-use crate::data::Database;
 use crate::BOT_ID;
+use crate::data::Database;
 
 pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) -> tokio::task::JoinHandle<()> {
     let mut interval = time::interval(Duration::from_secs(24 * 60 * 60));
@@ -18,7 +18,9 @@ pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) -> tokio::task::JoinHan
             if let Err(e) = prune(&bot, &db).await {
                 // crate::print_error(e);
                 eprintln!("Error: {}", e);
-                e.chain().skip(1).for_each(|cause| eprintln!("caused by: {}", cause));
+                e.chain()
+                    .skip(1)
+                    .for_each(|cause| eprintln!("caused by: {}", cause));
             }
         }
     })

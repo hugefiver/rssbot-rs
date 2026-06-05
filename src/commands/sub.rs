@@ -1,20 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use teloxide::{types::Message, utils::command::parse_command, Bot};
+use teloxide::{Bot, types::Message, utils::command::parse_command};
 use tokio::sync::Mutex;
 
 use crate::data::Database;
 use crate::messages::Escape;
-use crate::{client::pull_feed, BOT_NAME};
+use crate::{BOT_NAME, client::pull_feed};
 
-use super::{check_channel_permission, update_response, MsgTarget};
+use super::{MsgTarget, check_channel_permission, update_response};
 
-pub async fn sub(
-    bot: Bot,
-    msg: Message,
-    db: Arc<Mutex<Database>>,
-) -> Result<(), anyhow::Error> {
+pub async fn sub(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
     let chat_id = msg.chat.id;
     // let text = msg.text().unwrap_or("");
     // let args = text.split_whitespace().collect::<Vec<_>>();

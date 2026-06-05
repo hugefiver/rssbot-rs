@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use teloxide::{
+    ApiError, Bot, RequestError,
     payloads::{EditMessageTextSetters, SendMessageSetters},
     requests::Requester,
     types::{ChatId, LinkPreviewOptions, Message, MessageId, ParseMode, ReplyParameters},
-    ApiError, Bot, RequestError,
 };
 use tokio::sync::Mutex;
 
@@ -92,7 +92,9 @@ pub async fn check_command(opt: &crate::Opt, bot: &Bot, msg: &Message, cmd: &Com
     if !opt.admin.is_empty() && !is_from_bot_admin(msg, &opt.admin) {
         eprintln!(
             "Unauthenticated request from user/channel: {}, command: {:?}",
-            msg.from.as_ref().map_or("<nil>".to_string(), |u| u.full_name()),
+            msg.from
+                .as_ref()
+                .map_or("<nil>".to_string(), |u| u.full_name()),
             cmd
         );
         return false;
@@ -254,7 +256,10 @@ async fn check_channel_permission(
     channel: &str,
     target: &mut MsgTarget,
 ) -> Result<Option<ChatId>, anyhow::Error> {
-    let user = msg.from.as_ref().context("UNREACHABLE: message from channel")?;
+    let user = msg
+        .from
+        .as_ref()
+        .context("UNREACHABLE: message from channel")?;
 
     if user.is_anonymous() {
         // FIXME: error message

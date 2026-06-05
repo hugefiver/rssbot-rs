@@ -2,9 +2,9 @@ use std::io::Cursor;
 use std::io::Write;
 
 use chrono::Local;
+use quick_xml::Writer;
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
-use quick_xml::Writer;
 
 use crate::data::FeedInfo;
 

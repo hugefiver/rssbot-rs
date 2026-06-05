@@ -221,10 +221,7 @@ impl Database {
     pub fn subscribe(&mut self, subscriber: SubscriberId, rss_link: &str, rss: &feed::Rss) -> bool {
         let feed_id = gen_hash(&rss_link);
         {
-            let subscribed_feeds = self
-                .subscribers
-                .entry(subscriber)
-                .or_default();
+            let subscribed_feeds = self.subscribers.entry(subscriber).or_default();
             if !subscribed_feeds.insert(feed_id) {
                 return false;
             }
@@ -559,7 +556,10 @@ mod test {
         let rss = rss_with_item("Example", Some(10), "item-1");
         let mut db = database_with_feed(rss_link, &rss);
 
-        assert_eq!(db.get_or_update_down_time(rss_link), Some(Duration::default()));
+        assert_eq!(
+            db.get_or_update_down_time(rss_link),
+            Some(Duration::default())
+        );
         assert!(db.is_dirty());
     }
 

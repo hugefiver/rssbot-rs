@@ -2,19 +2,15 @@ use std::sync::Arc;
 
 use anyhow::Context;
 // use tbot::{contexts::Command, types::parameters};
-use teloxide::{types::Message, utils::command::parse_command, Bot};
+use teloxide::{Bot, types::Message, utils::command::parse_command};
 use tokio::sync::Mutex;
 
 use crate::messages::Escape;
-use crate::{data::Database, BOT_NAME};
+use crate::{BOT_NAME, data::Database};
 
-use super::{check_channel_permission, update_response, MsgTarget};
+use super::{MsgTarget, check_channel_permission, update_response};
 
-pub async fn unsub(
-    bot: Bot,
-    msg: Message,
-    db: Arc<Mutex<Database>>,
-) -> Result<(), anyhow::Error> {
+pub async fn unsub(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
     let chat_id = msg.chat.id;
     // let text = msg.text().unwrap_or("");
     // let args = text.split_whitespace().collect::<Vec<_>>();

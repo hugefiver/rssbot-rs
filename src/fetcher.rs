@@ -1,8 +1,8 @@
 use std::cmp;
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use teloxide::payloads::SendMessageSetters;
@@ -19,7 +19,7 @@ use tokio_util::time::DelayQueue;
 
 use crate::client::pull_feed;
 use crate::data::{Database, FeedFetchInfo, FeedUpdate};
-use crate::messages::{format_large_msg, Escape};
+use crate::messages::{Escape, format_large_msg};
 
 pub struct FetcherTasks {
     pub scheduler: tokio::task::JoinHandle<()>,
@@ -102,11 +102,7 @@ pub async fn flush_database(db: &Arc<Mutex<Database>>) -> Result<(), anyhow::Err
         if !db.is_dirty() {
             return Ok(());
         }
-        (
-            db.path().to_owned(),
-            db.serialize()?,
-            db.dirty_generation(),
-        )
+        (db.path().to_owned(), db.serialize()?, db.dirty_generation())
     };
 
     tokio::task::spawn_blocking(move || Database::save_from_serialized(path, &data)).await??;
@@ -199,7 +195,7 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
     for mut subscriber in subscribers {
         'retry: for _ in 0..3 {
             use ApiError::*;
-            match {
+            let res = {
                 let send = bot
                     .send_message(ChatId(subscriber), msg)
                     .link_preview_options(LinkPreviewOptions {
@@ -211,7 +207,8 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
                     })
                     .parse_mode(mode.unwrap_or(ParseMode::MarkdownV2));
                 send.await
-            } {
+            };
+            match res {
                 // Err(RequestError::Api(e)) if chat_is_unavailable(&e.to_string()) => {
                 //     db.lock().await.delete_subscriber(subscriber);
                 // }

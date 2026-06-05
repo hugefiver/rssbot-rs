@@ -3,17 +3,17 @@ use std::sync::Arc;
 use anyhow::Context;
 use either::Either;
 use pinyin::{Pinyin, ToPinyin};
+use teloxide::Bot;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::requests::Requester;
 use teloxide::types::{LinkPreviewOptions, Message, ReplyParameters};
 use teloxide::utils::command::parse_command;
-use teloxide::Bot;
 use tokio::sync::Mutex;
 
 use crate::data::Database;
-use crate::messages::{format_large_msg, Escape};
+use crate::messages::{Escape, format_large_msg};
 
-use super::{check_channel_permission, update_response, MsgTarget};
+use super::{MsgTarget, check_channel_permission, update_response};
 
 pub async fn rss(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
     let chat_id = msg.chat.id;
@@ -29,12 +29,12 @@ pub async fn rss(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(),
     } else {
         false
     };
-    let channel = args.get(0);
+    let channel = args.first();
     let mut target_id = chat_id;
     let target = &mut MsgTarget::new(chat_id, msg.id);
 
     if let Some(channel) = channel {
-        let channel_id = check_channel_permission(&bot, &msg, &channel, target).await?;
+        let channel_id = check_channel_permission(&bot, &msg, channel, target).await?;
         if channel_id.is_none() {
             return Ok(());
         }

@@ -2,18 +2,18 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use teloxide::{
+    Bot,
     payloads::SendDocumentSetters,
     requests::Requester,
     types::{InputFile, Message, ReplyParameters},
     utils::command::parse_command,
-    Bot,
 };
 use tokio::sync::Mutex;
 
 use crate::opml::into_opml;
-use crate::{data::Database, BOT_NAME};
+use crate::{BOT_NAME, data::Database};
 
-use super::{check_channel_permission, update_response, MsgTarget};
+use super::{MsgTarget, check_channel_permission, update_response};
 
 pub async fn export(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
     let chat_id = msg.chat.id;
@@ -25,10 +25,10 @@ pub async fn export(bot: Bot, msg: Message, db: Arc<Mutex<Database>>) -> Result<
         BOT_NAME.get().unwrap(),
     )
     .context("failed to parse command")?;
-    let channel = args.get(0);
+    let channel = args.first();
 
     if let Some(channel) = channel {
-        let channel_id = check_channel_permission(&bot, &msg, &channel, target).await?;
+        let channel_id = check_channel_permission(&bot, &msg, channel, target).await?;
         if channel_id.is_none() {
             return Ok(());
         }

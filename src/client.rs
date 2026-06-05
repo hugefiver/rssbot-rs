@@ -1,9 +1,9 @@
-use std::{env, sync::OnceLock};
 use std::time::Duration;
+use std::{env, sync::OnceLock};
 
 use reqwest::{
     self,
-    header::{HeaderValue, CONTENT_TYPE},
+    header::{CONTENT_TYPE, HeaderValue},
 };
 use thiserror::Error;
 
@@ -46,10 +46,11 @@ pub async fn pull_feed(url: &str) -> Result<Rss, FeedError> {
         .get()
         .expect("RESP_SIZE_LIMIT not initialized");
     let unlimited = size_limit == 0;
-    if let Some(len) = resp.content_length() {
-        if !unlimited && len > size_limit {
-            return Err(FeedError::TooLarge(size_limit));
-        }
+    if let Some(len) = resp.content_length()
+        && !unlimited
+        && len > size_limit
+    {
+        return Err(FeedError::TooLarge(size_limit));
     }
 
     let feed = if url.ends_with(".json")

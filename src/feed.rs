@@ -6,10 +6,10 @@ use std::rc::Rc;
 use std::str;
 use std::sync::{Arc, LazyLock};
 
-use quick_xml::events::attributes::Attributes;
+use quick_xml::Reader as XmlReader;
 use quick_xml::events::BytesStart;
 use quick_xml::events::Event as XmlEvent;
-use quick_xml::Reader as XmlReader;
+use quick_xml::events::attributes::Attributes;
 use regex::Regex;
 use serde::Deserialize;
 
@@ -214,13 +214,13 @@ impl FromXml for Rss {
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(XmlEvent::Empty(ref e)) => {
-                    if reader.decoder().decode(e.local_name().as_ref())?.as_ref() == "link" {
-                        match parse_atom_link(reader, e.attributes())? {
-                            Some(AtomLink::Alternate(link)) => rss.link = link,
-                            Some(AtomLink::Source(link)) => rss.source = Some(link),
-                            _ => {}
-                        }
+                Ok(XmlEvent::Empty(ref e))
+                    if reader.decoder().decode(e.local_name().as_ref())?.as_ref() == "link" =>
+                {
+                    match parse_atom_link(reader, e.attributes())? {
+                        Some(AtomLink::Alternate(link)) => rss.link = link,
+                        Some(AtomLink::Source(link)) => rss.source = Some(link),
+                        _ => {}
                     }
                 }
                 Ok(XmlEvent::Start(ref e)) => {
@@ -312,12 +312,11 @@ impl FromXml for Item {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(XmlEvent::Empty(ref e)) => {
-                    if reader.decoder().decode(e.name().as_ref())? == "link" {
-                        if let Some(AtomLink::Alternate(link)) =
+                    if reader.decoder().decode(e.name().as_ref())? == "link"
+                        && let Some(AtomLink::Alternate(link)) =
                             parse_atom_link(reader, e.attributes())?
-                        {
-                            item.link = Some(link);
-                        }
+                    {
+                        item.link = Some(link);
                     }
                 }
                 Ok(XmlEvent::Start(ref e)) => {
@@ -422,7 +421,7 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
                 return Err(quick_xml::Error::Io(Arc::new(std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,
                     "feed",
-                ))))
+                ))));
             }
             Err(err) => return Err(err),
             _ => (),

@@ -49,6 +49,8 @@ pub struct Database {
     path: PathBuf,
     feeds: HashMap<FeedId, Feed, Size64>,
     subscribers: HashMap<SubscriberId, HashSet<FeedId, Size64>, Size64>,
+    dirty: bool,
+    dirty_generation: u64,
 }
 
 impl Database {
@@ -57,6 +59,8 @@ impl Database {
             path,
             feeds: HashMap::with_hasher(Size64::default()),
             subscribers: HashMap::with_hasher(Size64::default()),
+            dirty: false,
+            dirty_generation: 0,
         };
 
         result.save()?;
@@ -87,6 +91,8 @@ impl Database {
                 path,
                 feeds,
                 subscribers,
+                dirty: false,
+                dirty_generation: 0,
             })
         } else {
             Database::create(path)
@@ -97,16 +103,70 @@ impl Database {
         self.feeds.values().cloned().collect()
     }
 
+    pub fn feed_fetch_info(&self) -> Vec<FeedFetchInfo> {
+        self.feeds
+            .values()
+            .map(|feed| FeedFetchInfo {
+                link: feed.link.clone(),
+                title: feed.title.clone(),
+                ttl: feed.ttl,
+                subscribers: feed.subscribers.iter().copied().collect(),
+            })
+            .collect()
+    }
+
     pub fn all_subscribers(&self) -> Vec<SubscriberId> {
         self.subscribers.keys().copied().collect()
     }
 
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub fn clear_dirty(&mut self) {
+        self.dirty = false;
+    }
+
+    pub fn dirty_generation(&self) -> u64 {
+        self.dirty_generation
+    }
+
+    pub fn clear_dirty_if_generation(&mut self, generation: u64) -> bool {
+        if self.dirty_generation == generation {
+            self.dirty = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Mark database as needing to be persisted. Actual save is deferred
+    /// to the next flush cycle, reducing I/O from O(n) to O(1) per batch.
+    fn mark_dirty(&mut self) {
+        self.dirty = true;
+        self.dirty_generation = self.dirty_generation.wrapping_add(1);
+    }
+
+    /// Persist to disk only if there are pending changes.
+    /// Should be called periodically from a background task.
+    #[allow(dead_code)]
+    pub fn flush_if_dirty(&mut self) -> Result<(), DataError> {
+        if self.dirty {
+            self.save()?;
+            self.clear_dirty();
+        }
+        Ok(())
+    }
+
     pub fn subscribed_feeds(&self, subscriber: SubscriberId) -> Option<Vec<Feed>> {
-        self.subscribers.get(&subscriber).map(|feeds| {
-            feeds
+        self.subscribers.get(&subscriber).map(|feed_ids| {
+            feed_ids
                 .iter()
-                .map(|feed_id| &self.feeds[feed_id])
-                .cloned()
+                .filter_map(|feed_id| self.feeds.get(feed_id).cloned())
                 .collect()
         })
     }
@@ -120,18 +180,21 @@ impl Database {
             Some(now.duration_since(t).unwrap_or_default())
         } else {
             feed.down_time = Some(now);
+            self.mark_dirty();
             Some(Duration::default())
         }
     }
 
     pub fn reset_down_time(&mut self, rss_link: &str) -> bool {
         let feed_id = gen_hash(&rss_link);
-        self.feeds
-            .get_mut(&feed_id)
-            .map(|feed| {
-                feed.down_time = None;
-            })
-            .is_some()
+        let changed = match self.feeds.get_mut(&feed_id) {
+            Some(feed) => feed.down_time.take().is_some(),
+            None => return false,
+        };
+        if changed {
+            self.mark_dirty();
+        }
+        true
     }
 
     pub fn is_subscribed(&self, subscriber: SubscriberId, rss_link: &str) -> bool {
@@ -163,7 +226,7 @@ impl Database {
             });
             feed.subscribers.insert(subscriber);
         }
-        self.save().unwrap_or_default();
+        self.mark_dirty();
         true
     }
 
@@ -199,18 +262,25 @@ impl Database {
         if clear_feed {
             self.feeds.remove(&feed_id);
         }
-        self.save().unwrap_or_default();
+        self.mark_dirty();
         Some(result)
     }
 
     pub fn delete_subscriber(&mut self, subscriber: SubscriberId) -> bool {
-        self.subscribed_feeds(subscriber)
-            .map(|feeds| {
-                for feed in feeds {
-                    let _ = self.unsubscribe(subscriber, &feed.link);
+        let feed_ids = match self.subscribers.remove(&subscriber) {
+            Some(ids) => ids,
+            None => return false,
+        };
+        for feed_id in &feed_ids {
+            if let Some(feed) = self.feeds.get_mut(feed_id) {
+                feed.subscribers.remove(&subscriber);
+                if feed.subscribers.is_empty() {
+                    self.feeds.remove(feed_id);
                 }
-            })
-            .is_some()
+            }
+        }
+        self.mark_dirty();
+        true
     }
 
     pub fn update_subscriber(&mut self, from: SubscriberId, to: SubscriberId) -> bool {
@@ -218,56 +288,66 @@ impl Database {
             .remove(&from)
             .map(|feeds| {
                 for feed_id in &feeds {
-                    let feed = self.feeds.get_mut(feed_id).unwrap();
-                    feed.subscribers.remove(&from);
-                    feed.subscribers.insert(to);
+                    if let Some(feed) = self.feeds.get_mut(feed_id) {
+                        feed.subscribers.remove(&from);
+                        feed.subscribers.insert(to);
+                    }
                 }
                 self.subscribers.insert(to, feeds);
+                self.mark_dirty();
             })
             .is_some()
     }
 
-    /// Update the feed in database, return updates
     pub fn update(&mut self, rss_link: &str, new_feed: feed::Rss) -> Vec<FeedUpdate> {
         let feed_id = gen_hash(&rss_link);
-        if !self.feeds.contains_key(&feed_id) {
-            return Vec::new();
-        }
-
-        self.reset_down_time(rss_link);
-        let feed = self.feeds.get_mut(&feed_id).unwrap();
-
         let mut updates = Vec::new();
-        let mut new_items = Vec::new();
-        let mut new_hash_list = Vec::new();
-        let items_len = new_feed.items.len();
-        for item in new_feed.items {
-            let hash = gen_item_hash(&item);
-            if !feed.hash_list.contains(&hash) {
-                new_hash_list.push(hash);
-                new_items.push(item);
+        let mut changed = false;
+        {
+            let feed = match self.feeds.get_mut(&feed_id) {
+                Some(f) => f,
+                None => return Vec::new(),
+            };
+
+            let mut new_items = Vec::new();
+            let mut new_hash_list = Vec::new();
+            let items_len = new_feed.items.len();
+            for item in new_feed.items {
+                let hash = gen_item_hash(&item);
+                if !feed.hash_list.contains(&hash) {
+                    new_hash_list.push(hash);
+                    new_items.push(item);
+                }
+            }
+            if !new_items.is_empty() {
+                updates.push(FeedUpdate::Items(new_items));
+
+                let max_size = items_len * 2;
+                let mut append: Vec<u64> = feed
+                    .hash_list
+                    .iter()
+                    .take(max_size - new_hash_list.len())
+                    .cloned()
+                    .collect();
+                new_hash_list.append(&mut append);
+                feed.hash_list = new_hash_list;
+                changed = true;
+            }
+            if new_feed.title != feed.title {
+                updates.push(FeedUpdate::Title(new_feed.title.clone()));
+                feed.title = new_feed.title;
+                changed = true;
+            }
+            if feed.ttl != new_feed.ttl {
+                feed.ttl = new_feed.ttl;
+                changed = true;
+            }
+            if feed.down_time.take().is_some() {
+                changed = true;
             }
         }
-        if !new_items.is_empty() {
-            updates.push(FeedUpdate::Items(new_items));
-
-            let max_size = items_len * 2;
-            let mut append: Vec<u64> = feed
-                .hash_list
-                .iter()
-                .take(max_size - new_hash_list.len())
-                .cloned()
-                .collect();
-            new_hash_list.append(&mut append);
-            feed.hash_list = new_hash_list;
-        }
-        if new_feed.title != feed.title {
-            updates.push(FeedUpdate::Title(new_feed.title.clone()));
-            feed.title = new_feed.title;
-        }
-        feed.ttl = new_feed.ttl;
-        if !updates.is_empty() {
-            self.save().unwrap_or_default();
+        if changed {
+            self.mark_dirty();
         }
         updates
     }
@@ -285,11 +365,36 @@ impl Database {
             })?;
         Ok(())
     }
+
+    pub fn serialize(&self) -> Result<Vec<u8>, DataError> {
+        let feeds_list: Vec<&Feed> = self.feeds.values().collect();
+        Ok(serde_json::to_vec(&feeds_list)?)
+    }
+
+    pub fn save_from_serialized(path: PathBuf, data: &[u8]) -> Result<(), DataError> {
+        let file = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite);
+        file.write(|file| {
+            use std::io::Write;
+            file.write_all(data)
+        })
+        .map_err(|e| match e {
+            atomicwrites::Error::Internal(e) => DataError::Io(e),
+            atomicwrites::Error::User(e) => DataError::Io(e),
+        })?;
+        Ok(())
+    }
 }
 
 pub enum FeedUpdate {
     Items(Vec<feed::Item>),
     Title(String),
+}
+
+pub struct FeedFetchInfo {
+    pub link: String,
+    pub title: String,
+    pub ttl: Option<u32>,
+    pub subscribers: Vec<SubscriberId>,
 }
 
 fn gen_item_hash(item: &feed::Item) -> u64 {
@@ -337,6 +442,107 @@ impl Hasher for Size64Hasher {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    fn rss_with_item(title: &str, ttl: Option<u32>, id: &str) -> feed::Rss {
+        feed::Rss {
+            title: title.to_owned(),
+            ttl,
+            items: vec![feed::Item {
+                id: Some(id.to_owned()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn database_with_feed(rss_link: &str, rss: &feed::Rss) -> Database {
+        let feed_id = gen_hash(&rss_link);
+        let mut feeds = HashMap::with_hasher(Size64::default());
+        feeds.insert(
+            feed_id,
+            Feed {
+                link: rss_link.to_owned(),
+                title: rss.title.clone(),
+                down_time: None,
+                subscribers: HashSet::default(),
+                ttl: rss.ttl,
+                hash_list: rss.items.iter().map(gen_item_hash).collect(),
+            },
+        );
+        Database {
+            path: PathBuf::new(),
+            feeds,
+            subscribers: HashMap::with_hasher(Size64::default()),
+            dirty: false,
+            dirty_generation: 0,
+        }
+    }
+
+    #[test]
+    fn serialize_reports_json_errors() {
+        let rss_link = "https://example.com/feed.xml";
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed(rss_link, &rss);
+        let feed_id = gen_hash(&rss_link);
+        db.feeds.get_mut(&feed_id).unwrap().down_time =
+            Some(std::time::UNIX_EPOCH - Duration::from_secs(1));
+
+        assert!(db.serialize().is_err());
+    }
+
+    #[test]
+    fn clear_dirty_if_generation_preserves_newer_mutations() {
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed("https://example.com/feed.xml", &rss);
+
+        db.mark_dirty();
+        let first_generation = db.dirty_generation();
+        db.mark_dirty();
+
+        assert!(!db.clear_dirty_if_generation(first_generation));
+        assert!(db.is_dirty());
+
+        assert!(db.clear_dirty_if_generation(db.dirty_generation()));
+        assert!(!db.is_dirty());
+    }
+
+    #[test]
+    fn update_resets_down_time_without_new_items() {
+        let rss_link = "https://example.com/feed.xml";
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed(rss_link, &rss);
+        let feed_id = gen_hash(&rss_link);
+        db.feeds.get_mut(&feed_id).unwrap().down_time = Some(SystemTime::now());
+
+        let updates = db.update(rss_link, rss);
+
+        assert!(updates.is_empty());
+        assert!(db.feeds.get(&feed_id).unwrap().down_time.is_none());
+        assert!(db.is_dirty());
+    }
+
+    #[test]
+    fn get_or_update_down_time_marks_dirty_when_first_set() {
+        let rss_link = "https://example.com/feed.xml";
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed(rss_link, &rss);
+
+        assert_eq!(db.get_or_update_down_time(rss_link), Some(Duration::default()));
+        assert!(db.is_dirty());
+    }
+
+    #[test]
+    fn reset_down_time_marks_dirty_when_value_changes() {
+        let rss_link = "https://example.com/feed.xml";
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed(rss_link, &rss);
+        let feed_id = gen_hash(&rss_link);
+        db.feeds.get_mut(&feed_id).unwrap().down_time = Some(SystemTime::now());
+
+        assert!(db.reset_down_time(rss_link));
+        assert!(db.feeds.get(&feed_id).unwrap().down_time.is_none());
+        assert!(db.is_dirty());
+    }
 
     #[test]
     fn size64hasher() {

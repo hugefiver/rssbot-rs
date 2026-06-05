@@ -179,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
             },
         );
     Dispatcher::builder(bot, handler)
-        .dependencies(dptree::deps![db, opt])
+        .dependencies(dptree::deps![db.clone(), opt])
         .default_handler(|_upd| async {})
         .error_handler(Arc::new(|e| async move {
             // eprintln!("tg error: {}", e);
@@ -189,6 +189,7 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .dispatch()
         .await;
+    fetcher::flush_database(&db).await?;
 
     // let mut event_loop = bot.event_loop();
     // event_loop.username(me.user.username.unwrap());

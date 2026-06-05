@@ -19,15 +19,28 @@ use tokio_stream::StreamExt;
 use tokio_util::time::DelayQueue;
 
 use crate::client::pull_feed;
-use crate::data::{Database, Feed, FeedUpdate};
+use crate::data::{Database, FeedFetchInfo, FeedUpdate};
 use crate::messages::{format_large_msg, Escape};
 
 pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval: u32) {
     let mut queue = FetchQueue::new();
-    // TODO: Don't use interval, it can accumulate ticks
-    // replace it with delay_until
     let mut interval = time::interval_at(Instant::now(), Duration::from_secs(min_interval as u64));
     let throttle = Throttle::new(min_interval as usize);
+
+    let db_flush = db.clone();
+    tokio::spawn(async move {
+        let mut flush_interval = time::interval(Duration::from_secs(5));
+        loop {
+            flush_interval.tick().await;
+            if let Err(e) = flush_database(&db_flush).await {
+                eprintln!("Error: {}", e);
+                e.chain()
+                    .skip(1)
+                    .for_each(|cause| eprintln!("caused by: {}", cause));
+            }
+        }
+    });
+
     tokio::spawn(async move {
         loop {
             select_biased! {
@@ -39,14 +52,13 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
                     tokio::spawn(async move {
                         opportunity.wait().await;
                         if let Err(e) = fetch_and_push_updates(bot, db, feed).await {
-                            // crate::print_error(e);
                             eprintln!("Error: {}", e);
                             e.chain().skip(1).for_each(|cause| eprintln!("caused by: {}", cause));
                         }
                     });
                 }
                 _ = interval.tick().fuse() => {
-                    let feeds = db.lock().await.all_feeds();
+                    let feeds = db.lock().await.feed_fetch_info();
                     for feed in feeds {
                         let feed_interval = cmp::min(
                             cmp::max(
@@ -54,7 +66,7 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
                                 min_interval,
                             ),
                             max_interval,
-                        ) as u64 - 1; // after -1, we can stagger with `interval`
+                        ) as u64 - 1;
                         queue.enqueue(feed, Duration::from_secs(feed_interval));
                     }
                 }
@@ -63,20 +75,36 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
     });
 }
 
+pub async fn flush_database(db: &Arc<Mutex<Database>>) -> Result<(), anyhow::Error> {
+    let (path, data, generation) = {
+        let db = db.lock().await;
+        if !db.is_dirty() {
+            return Ok(());
+        }
+        (
+            db.path().to_owned(),
+            db.serialize()?,
+            db.dirty_generation(),
+        )
+    };
+
+    tokio::task::spawn_blocking(move || Database::save_from_serialized(path, &data)).await??;
+    db.lock().await.clear_dirty_if_generation(generation);
+    Ok(())
+}
+
 async fn fetch_and_push_updates(
     bot: Bot,
     db: Arc<Mutex<Database>>,
-    feed: Feed,
+    feed: FeedFetchInfo,
 ) -> Result<(), anyhow::Error> {
     let new_feed = match pull_feed(&feed.link).await {
         Ok(feed) => feed,
         Err(e) => {
             let down_time = db.lock().await.get_or_update_down_time(&feed.link);
             if down_time.is_none() {
-                // user unsubscribed while fetching the feed
                 return Ok(());
             }
-            // 5 days
             if down_time.unwrap().as_secs() > 5 * 24 * 60 * 60 {
                 db.lock().await.reset_down_time(&feed.link);
                 let msg = tr!(
@@ -88,7 +116,7 @@ async fn fetch_and_push_updates(
                 push_updates(
                     &bot,
                     &db,
-                    feed.subscribers,
+                    feed.subscribers.iter().copied(),
                     &msg,
                     Some(teloxide::types::ParseMode::Html),
                 )
@@ -207,7 +235,7 @@ pub fn chat_is_unavailable(s: &str) -> bool {
 
 #[derive(Default)]
 struct FetchQueue {
-    feeds: HashMap<String, Feed>,
+    feeds: HashMap<String, FeedFetchInfo>,
     notifies: DelayQueue<String>,
     wakeup: Notify,
 }
@@ -217,7 +245,7 @@ impl FetchQueue {
         Self::default()
     }
 
-    fn enqueue(&mut self, feed: Feed, delay: Duration) -> bool {
+    fn enqueue(&mut self, feed: FeedFetchInfo, delay: Duration) -> bool {
         let exists = self.feeds.contains_key(&feed.link);
         if !exists {
             self.notifies.insert(feed.link.clone(), delay);
@@ -227,7 +255,7 @@ impl FetchQueue {
         !exists
     }
 
-    async fn next(&mut self) -> Result<Feed, time::error::Error> {
+    async fn next(&mut self) -> Result<FeedFetchInfo, time::error::Error> {
         loop {
             if let Some(feed_id) = self.notifies.next().await {
                 let feed = self.feeds.remove(feed_id.get_ref()).unwrap();

@@ -51,7 +51,8 @@ pub fn into_opml(feeds: Vec<Feed>) -> String {
     )
     .unwrap();
 
-    unsafe { String::from_utf8_unchecked(writer.into_inner().into_inner()) }
+    String::from_utf8(writer.into_inner().into_inner())
+        .expect("quick-xml always produces valid UTF-8")
 }
 
 // type of `attrs` is for zero allocation

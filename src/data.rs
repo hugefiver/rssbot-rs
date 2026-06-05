@@ -36,6 +36,20 @@ pub struct Feed {
     pub subscribers: HashSet<SubscriberId, Size64>,
     pub ttl: Option<u32>,
     hash_list: Vec<u64>,
+    #[serde(skip)]
+    hash_set: Option<HashSet<u64, Size64>>,
+}
+
+impl Feed {
+    fn ensure_hash_set(&mut self) -> &HashSet<u64, Size64> {
+        self.hash_set
+            .get_or_insert_with(|| self.hash_list.iter().copied().collect())
+    }
+
+    fn replace_hash_list(&mut self, hash_list: Vec<u64>) {
+        self.hash_set = Some(hash_list.iter().copied().collect());
+        self.hash_list = hash_list;
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -223,6 +237,7 @@ impl Database {
                 ttl: rss.ttl,
                 hash_list: rss.items.iter().map(gen_item_hash).collect(),
                 subscribers: HashSet::default(),
+                hash_set: None,
             });
             feed.subscribers.insert(subscriber);
         }
@@ -311,10 +326,11 @@ impl Database {
 
             let mut new_items = Vec::new();
             let mut new_hash_list = Vec::new();
+            let hash_set = feed.ensure_hash_set();
             let items_len = new_feed.items.len();
             for item in new_feed.items {
                 let hash = gen_item_hash(&item);
-                if !feed.hash_list.contains(&hash) {
+                if !hash_set.contains(&hash) {
                     new_hash_list.push(hash);
                     new_items.push(item);
                 }
@@ -330,7 +346,7 @@ impl Database {
                     .cloned()
                     .collect();
                 new_hash_list.append(&mut append);
-                feed.hash_list = new_hash_list;
+                feed.replace_hash_list(new_hash_list);
                 changed = true;
             }
             if new_feed.title != feed.title {
@@ -467,6 +483,7 @@ mod test {
                 subscribers: HashSet::default(),
                 ttl: rss.ttl,
                 hash_list: rss.items.iter().map(gen_item_hash).collect(),
+                hash_set: None,
             },
         );
         Database {
@@ -564,5 +581,46 @@ mod test {
     fn size64hasher_other_types() {
         let mut h = Size64Hasher::default();
         h.write_u8(0);
+    }
+
+    #[test]
+    fn feed_hash_set_is_rebuilt_from_persisted_hash_list() {
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let feed = Feed {
+            link: "https://example.com/feed.xml".to_string(),
+            title: rss.title.clone(),
+            down_time: None,
+            subscribers: HashSet::default(),
+            ttl: rss.ttl,
+            hash_list: rss.items.iter().map(gen_item_hash).collect(),
+            hash_set: None,
+        };
+
+        let json = serde_json::to_string(&feed).unwrap();
+        let mut restored: Feed = serde_json::from_str(&json).unwrap();
+        let existing_hash = restored.hash_list[0];
+
+        assert!(restored.hash_set.is_none());
+        assert!(restored.ensure_hash_set().contains(&existing_hash));
+    }
+
+    #[test]
+    fn feed_hash_set_is_not_serialized() {
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut feed = Feed {
+            link: "https://example.com/feed.xml".to_string(),
+            title: rss.title.clone(),
+            down_time: None,
+            subscribers: HashSet::default(),
+            ttl: rss.ttl,
+            hash_list: rss.items.iter().map(gen_item_hash).collect(),
+            hash_set: None,
+        };
+
+        feed.ensure_hash_set();
+
+        let json = serde_json::to_value(&feed).unwrap();
+        assert!(json.get("hash_list").is_some());
+        assert!(json.get("hash_set").is_none());
     }
 }

@@ -6,9 +6,9 @@ use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
 
-use crate::data::Feed;
+use crate::data::FeedInfo;
 
-pub fn into_opml(feeds: Vec<Feed>) -> String {
+pub fn into_opml(feeds: Vec<FeedInfo>) -> String {
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let decl = BytesDecl::new("1.0", Some("UTF-8"), None);
     writer.write_event(Event::Decl(decl)).unwrap();
@@ -79,12 +79,14 @@ where
 
 #[test]
 fn test_to_opml() {
-    let mut feed1 = Feed::default();
-    feed1.title = "title1".into();
-    feed1.link = "link1".into();
-    let mut feed2 = Feed::default();
-    feed2.title = "title2".into();
-    feed2.link = "link2".into();
+    let feed1 = FeedInfo {
+        title: "title1".into(),
+        link: "link1".into(),
+    };
+    let feed2 = FeedInfo {
+        title: "title2".into(),
+        link: "link2".into(),
+    };
     let feeds = vec![feed1, feed2];
     let r = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\

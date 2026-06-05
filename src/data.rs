@@ -176,11 +176,11 @@ impl Database {
         Ok(())
     }
 
-    pub fn subscribed_feeds(&self, subscriber: SubscriberId) -> Option<Vec<Feed>> {
+    pub fn subscribed_feeds(&self, subscriber: SubscriberId) -> Option<Vec<FeedInfo>> {
         self.subscribers.get(&subscriber).map(|feed_ids| {
             feed_ids
                 .iter()
-                .filter_map(|feed_id| self.feeds.get(feed_id).cloned())
+                .filter_map(|feed_id| self.feeds.get(feed_id).map(FeedInfo::from))
                 .collect()
         })
     }
@@ -413,6 +413,21 @@ pub struct FeedFetchInfo {
     pub subscribers: Vec<SubscriberId>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedInfo {
+    pub link: String,
+    pub title: String,
+}
+
+impl From<&Feed> for FeedInfo {
+    fn from(feed: &Feed) -> Self {
+        FeedInfo {
+            link: feed.link.clone(),
+            title: feed.title.clone(),
+        }
+    }
+}
+
 fn gen_item_hash(item: &feed::Item) -> u64 {
     item.id.as_ref().map(|id| gen_hash(&id)).unwrap_or_else(|| {
         let title = item.title.as_deref().unwrap_or_default();
@@ -622,5 +637,37 @@ mod test {
         let json = serde_json::to_value(&feed).unwrap();
         assert!(json.get("hash_list").is_some());
         assert!(json.get("hash_set").is_none());
+    }
+
+    #[test]
+    fn subscribed_feeds_returns_link_title_summaries() {
+        let rss_link = "https://example.com/feed.xml";
+        let rss = rss_with_item("Example", Some(10), "item-1");
+        let mut db = database_with_feed(rss_link, &rss);
+
+        let subscriber: SubscriberId = 12345;
+        let feed_id = gen_hash(&rss_link);
+
+        db.subscribers
+            .entry(subscriber)
+            .or_default()
+            .insert(feed_id);
+        db.feeds
+            .get_mut(&feed_id)
+            .unwrap()
+            .subscribers
+            .insert(subscriber);
+
+        let result = db.subscribed_feeds(subscriber);
+        assert!(result.is_some());
+        let summaries = result.unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(
+            summaries[0],
+            FeedInfo {
+                link: rss_link.to_string(),
+                title: "Example".to_string(),
+            }
+        );
     }
 }

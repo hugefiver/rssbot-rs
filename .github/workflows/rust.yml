@@ -19,6 +19,10 @@ jobs:
       with:
           components: clippy
 
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: test-${{ matrix.os }}-${{ matrix.rust }}
+
     - name: Clippy
       run: cargo clippy --no-deps --all-targets
 
@@ -37,6 +41,9 @@ jobs:
           toolchain: nightly
           override: true
     - uses: actions/checkout@master
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: locale-${{ matrix.locale }}
     - name: Check locales
       env:
         LOCALE: ${{ matrix.locale }}
